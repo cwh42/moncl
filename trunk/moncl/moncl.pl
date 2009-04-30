@@ -102,6 +102,7 @@ sub send_email
 }
 
 my @lastalarm = ();
+my $recordingstart;
 
 while( my $line = <$socket> )
 {
@@ -116,8 +117,12 @@ while( my $line = <$socket> )
 
         if( $params[0] - $lastalarm[0] <= 2 && $params[2] == $lastalarm[2] )
         {
-            my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
+            # trigger recording
+            my $duration = 20;
+            $duration = time() - $recordingstart if(defined($recordingstart));
+            command("204:1:$duration");
 
+            my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
             print $msg."\n";
             send_email($alarmtypes{$params[3]}, $msg);
             print "\tsent mail\n";
@@ -128,10 +133,24 @@ while( my $line = <$socket> )
         }
 
         @lastalarm = @params;
-        #command('204:1:20');
     }
     elsif( $cmd eq '104' )
-    {}
+    {
+        if( $params[1] == 0 )
+        {
+            $recordingstart = undef;
+            print "Aufname beendet: $params[2]\n";
+        }
+        elsif( $params[1] == 1 )
+        {
+            $recordingstart = time();
+            print "Aufname gestartet: $params[2]\n";
+        }
+        elsif( $params[1] == 2 )
+        {
+            print "Aufname verlängert: $params[2]\n";
+        }
+    }
     else
     {
         print "$line\n";
