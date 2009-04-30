@@ -13,6 +13,10 @@ my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
 $/ = "\r\n";
 $socket->autoflush(1);
 
+my %dptnames = ( 23154 => 'FF Goessenreuth',
+                 23153 => 'FF Hi. od La.?',
+                 23152 => 'FF Hi. od La.?');
+
 my %alarmtypes = ( 0 => 'Feueralarm (Still)',
                    1 => 'Feueralarm (Still)',
                    2 => 'Feueralarm',
@@ -97,6 +101,8 @@ sub send_email
 		AuthPass=>'ZDa!DaH?');
 }
 
+my @lastalarm = ();
+
 while( my $line = <$socket> )
 {
     chomp( $line );
@@ -106,11 +112,22 @@ while( my $line = <$socket> )
     {
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
-        my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $params[2]);
+        my $who = $dptnames{$params[2]} || $params[2];
 
-        print $msg."\n";
-        send_email($alarmtypes{$params[3]}, $msg);
+        if( $params[0] - $lastalarm[0] <= 2 && $params[2] == $lastalarm[2] )
+        {
+            my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
 
+            print $msg."\n";
+            send_email($alarmtypes{$params[3]}, $msg);
+            print "\tsent mail\n";
+        }
+        else
+        {
+            print timefmt($params[0]).": Einzelnes Quintett $who\n";
+        }
+
+        @lastalarm = @params;
         #command('204:1:20');
     }
     elsif( $cmd eq '104' )
