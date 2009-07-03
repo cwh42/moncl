@@ -3,6 +3,7 @@
 use strict;
 use IO::Socket;
 use MIME::Lite;
+use Net::SMS::Clickatell;
 
 my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
                                     PeerPort => 9333,
@@ -10,12 +11,23 @@ my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
                                     Type => SOCK_STREAM )
     or die("Could not connect: $@\n");
 
+my $catell_api_id = '1563210';
+my $catell_user = 'cwhofmann';
+my $catell_pass = 'dam0kles';
+my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
+$catell->auth( USER => $catell_user,
+               PASSWD => $catell_pass );
+
 $/ = "\r\n";
 $socket->autoflush(1);
 
 my %dptnames = ( 23154 => 'FF Goessenreuth',
                  23153 => 'FF Hi. od La.?',
                  23152 => 'FF Hi. od La.?');
+
+my %loops = ( 23154 => { name => 'FF Goessenreuth',
+                         emails => [qw( cwh@webeve.de )],
+                         numbers => [qw( +491702636472 )] } );
 
 my %alarmtypes = ( 0 => 'Feueralarm (Still)',
                    1 => 'Feueralarm (Still)',
@@ -101,6 +113,24 @@ sub send_email
 		AuthPass=>'ZDa!DaH?');
 }
 
+sub send_sms
+{
+    my ($loop, $text) = @_;
+
+    #return 0 unless( $loop eq '23154' );
+
+    my @phones = qw( +491702636472 );
+    my $count = 0;
+
+    foreach my $phone (@phones)
+    {
+        $count += $catell->sendmsg( TO => $phone,
+                                    MSG => sprintf('%s %s', $loop, $text) );
+    }
+
+    return $count;
+}
+
 my @lastalarm = ();
 my $recordingstart;
 
@@ -126,6 +156,9 @@ while( my $line = <$socket> )
             print $msg."\n";
             send_email($alarmtypes{$params[3]}, $msg);
             print "\tsent mail\n";
+
+            my $count = send_sms($params[2], $msg);
+            print "\tsent $count sms\n";
         }
         else
         {
