@@ -27,7 +27,7 @@ my %dptnames = ( 23154 => 'FF Goessenreuth',
 
 my %loops = ( 23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de )],
-                         numbers => [qw( +491702636472 )] } );
+                         numbers => [qw( 491702636472 )] } );
 
 my %alarmtypes = ( 0 => 'Feueralarm (Still)',
                    1 => 'Feueralarm (Still)',
@@ -119,7 +119,7 @@ sub send_sms
 
     #return 0 unless( $loop eq '23154' );
 
-    my @phones = qw( +491702636472 );
+    my @phones = qw( 491702636472 );
     my $count = 0;
 
     foreach my $phone (@phones)
