@@ -125,7 +125,7 @@ sub send_sms
     foreach my $phone (@phones)
     {
         $count += $catell->sendmsg( TO => $phone,
-                                    MSG => sprintf('%s %s', $loop, $text) );
+                                    MSG => sprintf('%s %s', $loop, $text) ) || '0';
     }
 
     return $count;
@@ -145,7 +145,7 @@ while( my $line = <$socket> )
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
         my $who = $dptnames{$params[2]} || $params[2];
 
-        if( $params[0] - $lastalarm[0] <= 2 && $params[2] == $lastalarm[2] )
+        if( $params[0] - ($lastalarm[0]||0) <= 2 && $params[2] == $lastalarm[2] )
         {
             # trigger recording
             my $duration = 20;
