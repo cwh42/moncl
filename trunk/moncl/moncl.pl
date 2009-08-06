@@ -84,13 +84,17 @@ sub msgid
 
 sub send_email
 {
-    my ($type, $text, $file ) = @_;
+    my ($loop, $type, $time, $file ) = @_;
 
     my $from = 'ffw@goessenreuth.de';
+    my $who = $loops{$loop}->{name} || $loop;
+    my $what = $alarmtypes{$type};
+    my $to = $loops{$loop}->{emails};
+    my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
-    my $mail = MIME::Lite->new( From => "FF =?utf-8?q?G=C3=B6ssenreuth?= <$from>",
-                                To => 'cwh@webeve.de',
-                                Subject => $type,
+    my $mail = MIME::Lite->new( From => "FF Alarmierung <$from>",
+                                To => $to,
+                                Subject => "$type $who",
                                 'Message-ID' => msgid($from),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
@@ -154,7 +158,9 @@ while( my $line = <$socket> )
 
             my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
             print $msg."\n";
-            send_email($alarmtypes{$params[3]}, $msg);
+
+            send_email($params[2], $params[3], $params[0]);
+
             print "\tsent mail\n";
 
             my $count = send_sms($params[2], $msg);
