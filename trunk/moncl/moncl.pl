@@ -27,7 +27,13 @@ my %dptnames = ( 23154 => 'FF Goessenreuth',
 
 my %loops = ( 23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de )],
-                         numbers => [qw( 491702636472 )] } );
+                         numbers => [qw( 491702636472 )] },
+              23152 => { name => 'FF Hi. od. La. (152)',
+                         emails => [qw( cwh@webeve.de )],
+                         numbers => [] },
+              23153 => { name => 'FF Hi. od. La. (153)',
+                         emails => [qw( cwh@webeve.de )],
+                         numbers => [] } );
 
 my %alarmtypes = ( 0 => 'Feueralarm (Still)',
                    1 => 'Feueralarm (Still)',
@@ -88,9 +94,13 @@ sub send_email
 
     my $from = 'ffw@goessenreuth.de';
 
-    my $who = $loops{$loop}->{name} || $loop;
+    my $loopdata = $loops{$loop} || { name => $loop,
+                                      emails => [qw( cwh@webeve.de )],
+                                      numbers => [] };
+
+    my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type};
-    my $to = $loops{$loop}->{emails};
+    my $to = $loopdata->{emails};
 
     my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
@@ -157,7 +167,12 @@ while( my $line = <$socket> )
     {
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
-        my $who = $dptnames{$params[2]} || $params[2];
+
+        my $loopdata = $loops{$params[2]} || { name => $params[2],
+                                          emails => [qw( cwh@webeve.de )],
+                                          numbers => [] };
+
+        my $who = $loopdata->{name} || $params[2];
 
         if( $params[0] - ($lastalarm[0]||0) <= 2 && $params[2] == $lastalarm[2] )
         {
