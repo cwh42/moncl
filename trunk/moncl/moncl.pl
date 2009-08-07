@@ -38,8 +38,8 @@ my %loops = ( 23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de )],
                          numbers => [] } );
 
-my %alarmtypes = ( 0 => 'Feueralarm (Still)',
-                   1 => 'Feueralarm (Still)',
+my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
+                   1 => 'Melderalarmierung (1)',
                    2 => 'Feueralarm',
                    3 => 'Probelalarm',
                    4 => 'Zivilschutzalarm',
@@ -102,13 +102,13 @@ sub send_email
                                       numbers => [] };
 
     my $who = $loopdata->{name} || $loop;
-    my $what = $alarmtypes{$type};
+    my $what = $alarmtypes{$type} || $type;
     my $to = $loopdata->{emails};
 
     my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
     my $mail = MIME::Lite->new( From => "FF Alarmierung <$from>",
-                                Subject => "$type $who",
+                                Subject => "$what $who",
                                 'Message-ID' => msgid($from),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
