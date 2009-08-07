@@ -87,17 +87,27 @@ sub send_email
     my ($loop, $type, $time, $file ) = @_;
 
     my $from = 'ffw@goessenreuth.de';
+
     my $who = $loops{$loop}->{name} || $loop;
     my $what = $alarmtypes{$type};
     my $to = $loops{$loop}->{emails};
+
     my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
     my $mail = MIME::Lite->new( From => "FF Alarmierung <$from>",
-                                To => $to,
                                 Subject => "$type $who",
                                 'Message-ID' => msgid($from),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
+
+    if(@$to > 0)
+    {
+        $msg->add("To" => $to);
+    }
+    else
+    {
+        $msg->add("To" => 'cwh@suse.de');
+    }
 
     $mail->attach( Type => 'TEXT',
                    Data => $text );
@@ -160,11 +170,10 @@ while( my $line = <$socket> )
             print $msg."\n";
 
             send_email($params[2], $params[3], $params[0]);
-
             print "\tsent mail\n";
 
-            my $count = send_sms($params[2], $msg);
-            print "\tsent $count sms\n";
+            my $smscount = send_sms($params[2], $msg);
+            print "\tsent $smscount sms\n";
         }
         else
         {
