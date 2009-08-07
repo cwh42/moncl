@@ -102,11 +102,11 @@ sub send_email
 
     if(@$to > 0)
     {
-        $msg->add("To" => $to);
+        $mail->add("To" => $to);
     }
     else
     {
-        $msg->add("To" => 'cwh@suse.de');
+        $mail->add("To" => 'cwh@suse.de');
     }
 
     $mail->attach( Type => 'TEXT',
