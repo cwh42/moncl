@@ -11,9 +11,12 @@ my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
                                     Type => SOCK_STREAM )
     or die("Could not connect: $@\n");
 
+my $maxdelta_t = 3;
+
 my $catell_api_id = '1563210';
 my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
+
 my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
 $catell->auth( USER => $catell_user,
                PASSWD => $catell_pass );
@@ -174,7 +177,7 @@ while( my $line = <$socket> )
 
         my $who = $loopdata->{name} || $params[2];
 
-        if( $params[0] - ($lastalarm[0]||0) <= 2 && $params[2] == $lastalarm[2] )
+        if( $params[0] - ($lastalarm[0]||0) <= $maxdelta_t && $params[2] == $lastalarm[2] )
         {
             # trigger recording
             my $duration = 20;
