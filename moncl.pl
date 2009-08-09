@@ -5,38 +5,30 @@ use IO::Socket;
 use MIME::Lite;
 use Net::SMS::Clickatell;
 
-my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
-                                    PeerPort => 9333,
-                                    Proto => 'tcp',
-                                    Type => SOCK_STREAM )
-    or die("Could not connect: $@\n");
-
 my $maxdelta_t = 3;
+
+my $mail_from = 'ffw@goessenreuth.de';
+my $mail_server = 'mail.webeve.de';
+my $mail_user = 'cwh';
+my $mail_pass = 'ZDa!DaH?';
 
 my $catell_api_id = '1563210';
 my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
 
-my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
-$catell->auth( USER => $catell_user,
-               PASSWD => $catell_pass );
-
-$/ = "\r\n";
-$socket->autoflush(1);
-
-my %dptnames = ( 23154 => 'FF Goessenreuth',
-                 23153 => 'FF Hi. od La.?',
-                 23152 => 'FF Hi. od La.?');
-
-my %loops = ( 23154 => { name => 'FF Goessenreuth',
+my %loops = ( default => { emails => [qw( cwh@webeve.de )],
+			   numbers => [qw( 491702636472 )] },
+	      23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de )],
                          numbers => [qw( 491702636472 )] },
               23152 => { name => 'FF Hi. od. La. (152)',
                          emails => [qw( cwh@webeve.de )],
-                         numbers => [] },
+                         numbers => [qw( 491702636472 )] },
               23153 => { name => 'FF Hi. od. La. (153)',
                          emails => [qw( cwh@webeve.de )],
-                         numbers => [] } );
+                         numbers => [qw( 491702636472 )] } );
+
+# ====================================
 
 my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    1 => 'Melderalarmierung (1)',
@@ -47,6 +39,21 @@ my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    6 => 'Entwarnung' );
 
 my @wdays = qw(So Mo Di Mi Do Fr Sa);
+
+# ------------------------------------
+
+my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
+$catell->auth( USER => $catell_user,
+               PASSWD => $catell_pass );
+
+my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
+                                    PeerPort => 9333,
+                                    Proto => 'tcp',
+                                    Type => SOCK_STREAM )
+    or die("Could not connect: $@\n");
+
+$socket->autoflush(1);
+$/ = "\r\n";
 
 sub command
 {
@@ -82,7 +89,7 @@ sub textdecode
 
 sub msgid
 {
-    my $from = shift || 'user@host';
+    my $from = shift || 'root@localhost';
 
     my @timedate = localtime(time());
     $timedate[4]++;
@@ -95,11 +102,7 @@ sub send_email
 {
     my ($loop, $type, $time, $file ) = @_;
 
-    my $from = 'ffw@goessenreuth.de';
-
-    my $loopdata = $loops{$loop} || { name => $loop,
-                                      emails => [qw( cwh@webeve.de )],
-                                      numbers => [] };
+    my $loopdata = $loops{$loop} || $loops{default};
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
@@ -107,9 +110,9 @@ sub send_email
 
     my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
-    my $mail = MIME::Lite->new( From => "FF Alarmierung <$from>",
+    my $mail = MIME::Lite->new( From => "FF Alarmierung <$mail_from>",
                                 Subject => "$what $who",
-                                'Message-ID' => msgid($from),
+                                'Message-ID' => msgid($mail_from),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
 
@@ -119,7 +122,7 @@ sub send_email
     }
     else
     {
-        $mail->add("To" => 'cwh@suse.de');
+        $mail->add("To" => $loops{default}->{emails}||[]);
     }
 
     $mail->attach( Type => 'TEXT',
@@ -133,26 +136,29 @@ sub send_email
 
     #print $mail->as_string();
     $mail->send('smtp',
-		'mail.webeve.de',
-		Timeout=>60,
-		Hello=>'127.0.0.1',
-                AuthUser=>'cwh',
-		AuthPass=>'ZDa!DaH?');
+		$mail_server,
+		Timeout => 60,
+		Hello => '127.0.0.1',
+                AuthUser => $mail_user,
+		AuthPass => $mail_pass);
 }
 
 sub send_sms
 {
-    my ($loop, $text) = @_;
+    my ($loop, $type, $time) = @_;
 
-    #return 0 unless( $loop eq '23154' );
+    my $loopdata = $loops{$loop} || $loops{default};
 
-    my @phones = qw( 491702636472 );
+    my $who = $loopdata->{name} || $loop;
+    my $what = $alarmtypes{$type} || $type;
+    my $to = $loopdata->{numbers};
+
     my $count = 0;
 
-    foreach my $phone (@phones)
+    foreach my $phone (@$to)
     {
-        $count += $catell->sendmsg( TO => $phone,
-                                    MSG => sprintf('%s %s', $loop, $text) ) || '0';
+        $count += $catell->sendmsg(TO => $phone,
+				   MSG => "$what $who");
     }
 
     return $count;
@@ -171,11 +177,8 @@ while( my $line = <$socket> )
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
 
-        my $loopdata = $loops{$params[2]} || { name => $params[2],
-                                          emails => [qw( cwh@webeve.de )],
-                                          numbers => [] };
-
-        my $who = $loopdata->{name} || $params[2];
+	my $loopdata = $loops{$params[2]} || $loops{default};
+	my $who = $loopdata->{name} || $params[2];
 
         if( $params[0] - ($lastalarm[0]||0) <= $maxdelta_t && $params[2] == $lastalarm[2] )
         {
@@ -184,13 +187,16 @@ while( my $line = <$socket> )
             $duration = time() - $recordingstart if(defined($recordingstart));
             command("204:1:$duration");
 
+	    # print message to STDOUT
             my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
             print $msg."\n";
 
+	    # send emails
             send_email($params[2], $params[3], $params[0]);
             print "\tsent mail\n";
 
-            my $smscount = send_sms($params[2], $msg);
+	    #send sms
+            my $smscount = send_sms($params[2], $params[3], $params[0]);
             print "\tsent $smscount sms\n";
         }
         else
