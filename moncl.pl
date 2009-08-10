@@ -17,9 +17,12 @@ my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
 
 my %loops = ( default => { emails => [qw( cwh@webeve.de )],
-			   numbers => [qw( 491702636472 )] },
+			   numbers => [qw( 491702636472 491718813863 )] },
 	      23154 => { name => 'FF Goessenreuth',
-                         emails => [qw( cwh@webeve.de )],
+                         emails => [qw( cwh@webeve.de
+                                        markus.matussek@glendimplex.de
+                                        geyer.achim@landkreis-kulmbach.de
+                                        alexander.schneider@novem.de )],
                          numbers => [qw( 491702636472 )] },
               23152 => { name => 'FF Hi. od. La. (152)',
                          emails => [qw( cwh@webeve.de )],
