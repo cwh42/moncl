@@ -201,6 +201,9 @@ while( my $line = <$socket> )
 	    #send sms
             my $smscount = send_sms($params[2], $params[3], $params[0]);
             print "\tsent $smscount sms\n";
+
+            #reset lastalarm
+            @lastalarm = ();
         }
         else
         {
