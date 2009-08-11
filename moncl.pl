@@ -17,13 +17,13 @@ my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
 
 my %loops = ( default => { emails => [qw( cwh@webeve.de )],
-			   numbers => [qw( 491702636472 491718813863 )] },
+			   numbers => [qw( 491702636472 )] },
 	      23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de
                                         markus.matussek@glendimplex.de
                                         geyer.achim@landkreis-kulmbach.de
                                         alexander.schneider@novem.de )],
-                         numbers => [qw( 491702636472 )] },
+                         numbers => [qw( 491702636472 491718813863 )] },
               23152 => { name => 'FF Hi. od. La. (152)',
                          emails => [qw( cwh@webeve.de )],
                          numbers => [qw( 491702636472 )] },
@@ -72,7 +72,7 @@ sub timefmt
     $timedate[5] += 1900;
     $timedate[6] = $wdays[$timedate[6]];
 
-    return(sprintf('%d-%02d-%02d (%s) %02d:%02d:%02d', @timedate[5,4,3,6,2,1,0]));
+    return(sprintf('%s, %02d.%02d.%d %02d:%02d:%02d', @timedate[6,3,4,5,2,1,0]));
 }
 
 sub textdecode
@@ -160,6 +160,7 @@ sub send_sms
 
     foreach my $phone (@$to)
     {
+        print "\tSMS to $phone with text \"$what $who\"\n";
         $count += $catell->sendmsg(TO => $phone,
 				   MSG => "$what $who");
     }
@@ -167,7 +168,7 @@ sub send_sms
     return $count;
 }
 
-my @lastalarm = ();
+my %lastalarm = ();
 my $recordingstart;
 
 while( my $line = <$socket> )
@@ -177,13 +178,16 @@ while( my $line = <$socket> )
 
     if( $cmd eq '300' )
     {
+        my %alarmdata = ();
+        @alarmdata{qw(time channel loop type text)} = @params;
+
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
 
-	my $loopdata = $loops{$params[2]} || $loops{default};
-	my $who = $loopdata->{name} || $params[2];
+	my $loopdata = $loops{$alarmdata{loop}} || $loops{default};
+	my $who = $loopdata->{name} || $alarmdata{loop};
 
-        if( $params[0] - ($lastalarm[0]||0) <= $maxdelta_t && $params[2] == $lastalarm[2] )
+        if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
         {
             # trigger recording
             my $duration = 20;
@@ -191,26 +195,26 @@ while( my $line = <$socket> )
             command("204:1:$duration");
 
 	    # print message to STDOUT
-            my $msg = sprintf( "%s: %s %s", timefmt($params[0]), $alarmtypes{$params[3]}, $who);
+            my $msg = sprintf( "%s: %s %s", timefmt($alarmdata{time}), $alarmtypes{$alarmdata{type}}, $who);
             print $msg."\n";
 
 	    # send emails
-            send_email($params[2], $params[3], $params[0]);
+            send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
             print "\tsent mail\n";
 
 	    #send sms
-            my $smscount = send_sms($params[2], $params[3], $params[0]);
+            my $smscount = send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
             print "\tsent $smscount sms\n";
 
             #reset lastalarm
-            @lastalarm = ();
+            %lastalarm = ();
         }
         else
         {
-            print timefmt($params[0]).": Einzelnes Quintett $who\n";
+            print timefmt($alarmdata{time}).": Einzelnes Quintett $who\n";
         }
 
-        @lastalarm = @params;
+        %lastalarm = %alarmdata;
     }
     elsif( $cmd eq '104' )
     {
