@@ -41,13 +41,20 @@ my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    5 => 'Warnung',
                    6 => 'Entwarnung' );
 
+my %errorcodes = ( '000' => "Unbekannter Fehler", 
+                   '001' => "Not logged In",      
+                   '002' => "Not Authorized",     
+                   '003' => "False Login",        
+                   '004' => "Protocoll Error",    
+                   '005' => "Not Implemented",    
+                   '006' => "Hardware Fault",     
+                   '007' => "Write Fault",        
+                   '008' => "Version Error",      
+                   '009' => "Function deactivated" );
+
 my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
 # ------------------------------------
-
-my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
-$catell->auth( USER => $catell_user,
-               PASSWD => $catell_pass );
 
 my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
                                     PeerPort => 9333,
@@ -156,6 +163,10 @@ sub send_sms
     my $what = $alarmtypes{$type} || $type;
     my $to = $loopdata->{numbers};
 
+    my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
+    $catell->auth( USER => $catell_user,
+                   PASSWD => $catell_pass );
+
     my $count = 0;
 
     foreach my $phone (@$to)
@@ -232,6 +243,10 @@ while( my $line = <$socket> )
         {
             print "Aufname verlängert: $params[2]\n";
         }
+    }
+    elsif( $cmd eq '101' )
+    {
+        print "Fehler: ".$errorcodes{$params[0]}||'000'."\n";
     }
     else
     {
