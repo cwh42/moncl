@@ -17,7 +17,7 @@ my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
 
 my %loops = ( default => { emails => [qw( cwh@webeve.de )],
-			   numbers => [qw( 491702636472 )] },
+			   numbers => [] },
 	      23154 => { name => 'FF Goessenreuth',
                          emails => [qw( cwh@webeve.de
                                         markus.matussek@glendimplex.de
@@ -223,9 +223,8 @@ while( my $line = <$socket> )
         else
         {
             print timefmt($alarmdata{time}).": Einzelnes Quintett $who\n";
+            %lastalarm = %alarmdata;
         }
-
-        %lastalarm = %alarmdata;
     }
     elsif( $cmd eq '104' )
     {
@@ -246,7 +245,7 @@ while( my $line = <$socket> )
     }
     elsif( $cmd eq '101' )
     {
-        print "Fehler: ".$errorcodes{$params[0]}||'000'."\n";
+        print "Fehler: ".$errorcodes{$params[0]}."\n";
     }
     else
     {
