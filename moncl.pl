@@ -11,25 +11,32 @@ my $mail_from = 'ffw@goessenreuth.de';
 my $mail_server = 'mail.webeve.de';
 my $mail_user = 'cwh';
 my $mail_pass = 'ZDa!DaH?';
+#my $mail_server = 'relay.suse.de';
+#my $mail_user = '';
+#my $mail_pass = '';
 
-my $catell_api_id = '1563210';
+my $catell_api_id = '3187455';
 my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
 
-my %loops = ( default => { emails => [qw( cwh@webeve.de )],
-			   numbers => [] },
+my %people = ( cwh => { name => 'Christopher Hofmann', phone => '01702636472', email => 'cwh@webeve.de' },
+               seggl => { name => 'Markus Matussek', phone => '01718813863', email => 'markus.matussek@glendimplex.de' },
+               andrea => { name => 'Andrea Herzog', phone => '015111701351', email => 'la-andi@gmx.de' },
+               achim => { name => 'Achim Geyer', phone => '01607634981', email => 'geyer.achim@landkreis-kulmbach.de' },
+               xaver => { name => 'Alexander Schneider', phone => '015112446132', email => 'alexander.schneider@novem.de' });
+
+# cwh => { name => '', phone => '', email => '' }
+
+my %loops = ( default => { email => [qw(cwh)] },
 	      23154 => { name => 'FF Goessenreuth',
-                         emails => [qw( cwh@webeve.de
-                                        markus.matussek@glendimplex.de
-                                        geyer.achim@landkreis-kulmbach.de
-                                        alexander.schneider@novem.de )],
-                         numbers => [qw( 491702636472 491718813863 )] },
+                         email => [qw(cwh seggl achim xaver)],
+                         sms => [qw(cwh seggl andrea xaver)] },
               23152 => { name => 'FF Hi. od. La. (152)',
-                         emails => [qw( cwh@webeve.de )],
-                         numbers => [qw( 491702636472 )] },
+                         email => [qw(cwh)],
+                         sms => [qw(cwh)] },
               23153 => { name => 'FF Hi. od. La. (153)',
-                         emails => [qw( cwh@webeve.de )],
-                         numbers => [qw( 491702636472 )] } );
+                         email => [qw(cwh)],
+                         sms => [qw(cwh)] } );
 
 # ====================================
 
@@ -116,7 +123,7 @@ sub send_email
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
-    my $to = $loopdata->{emails};
+    my $to = $loopdata->{email} || [];
 
     my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
 
@@ -126,13 +133,15 @@ sub send_email
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
 
-    if(@$to > 0)
+    my @to = grep {ref($people{$_}) && $people{$_}->{email} && ($_ = $people{$_}->{email})} @$to;
+
+    if(@to > 0)
     {
-        $mail->add("To" => $to);
+        $mail->add("To" => \@to);
     }
     else
     {
-        $mail->add("To" => $loops{default}->{emails}||[]);
+        $mail->add("To" => $loops{default}->{email}||[]);
     }
 
     $mail->attach( Type => 'TEXT',
@@ -161,7 +170,7 @@ sub send_sms
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
-    my $to = $loopdata->{numbers};
+    my $to = $loopdata->{sms} || [];
 
     my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
     $catell->auth( USER => $catell_user,
@@ -169,8 +178,11 @@ sub send_sms
 
     my $count = 0;
 
-    foreach my $phone (@$to)
+    foreach my $person (@$to)
     {
+        next if !ref($people{$person});
+        my $phone = $people{$person}->{phone};
+
         print "\tSMS to $phone with text \"$what $who\"\n";
         $count += $catell->sendmsg(TO => $phone,
 				   MSG => "$what $who");
