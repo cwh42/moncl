@@ -215,7 +215,7 @@ while( my $line = <$socket> )
             # trigger recording
             my $duration = 20;
             $duration = time() - $recordingstart if(defined($recordingstart));
-            command("204:1:$duration");
+            command("204:$alarmdata{channel}:$duration");
 
 	    # print message to STDOUT
             my $msg = sprintf( "%s: %s %s", timefmt($alarmdata{time}), $alarmtypes{$alarmdata{type}}, $who);
