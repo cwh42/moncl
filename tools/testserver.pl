@@ -16,9 +16,11 @@ my %loop = ( loop => '23152',
 
 while (my $client = $server->accept())
 {
-    foreach (0,2)
+    foreach (0,3)
     {
-        print $client join(':', 300, time(), @loop{qw(channel loop)}, $_, 'msg')."\r\n";
+        my $msg = join(':', 300, time(), @loop{qw(channel loop)}, $_, 'msg')."\r\n";
+        print $msg;
+        print $client $msg;
         sleep(1);
     }
 }
