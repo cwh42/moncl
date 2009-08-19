@@ -3,7 +3,7 @@
 use strict;
 use IO::Socket;
 use MIME::Lite;
-use Net::SMS::Clickatell;
+use Net::Clickatell;
 
 my $maxdelta_t = 3;
 
@@ -15,6 +15,7 @@ my $mail_pass = 'ZDa!DaH?';
 #my $mail_user = '';
 #my $mail_pass = '';
 
+my $sms_from = '491702636472';
 my $catell_api_id = '3187455';
 my $catell_user = 'cwhofmann';
 my $catell_pass = 'dam0kles';
@@ -172,23 +173,19 @@ sub send_sms
     my $what = $alarmtypes{$type} || $type;
     my $to = $loopdata->{sms} || [];
 
-    my $catell = Net::SMS::Clickatell->new( API_ID => $catell_api_id );
-    $catell->auth( USER => $catell_user,
-                   PASSWD => $catell_pass );
+    my $clickatell = Net::Clickatell->new( API_ID => $catell_api_id,
+                                           USERNAME =>$catell_user,
+                                           PASSWORD =>$catell_pass );
 
-    my $count = 0;
+    my @to = grep {ref($people{$_}) && $people{$_}->{phone} && ($_ = $people{$_}->{phone})} @$to;
 
-    foreach my $person (@$to)
+    if(@to)
     {
-        next if !ref($people{$person});
-        my $phone = $people{$person}->{phone};
-
-        print "\tSMS to $phone with text \"$what $who\"\n";
-        $count += $catell->sendmsg(TO => $phone,
-				   MSG => "$what $who");
+        print "\tSMS to ".scalar(@to)." number(s) with text \"$what $who\"\n";
+        print "\t".$clickatell->sendBasicSMSMessage($sms_from,
+                                                    join(',',@to),
+                                                    "$what $who")."\n";
     }
-
-    return $count;
 }
 
 my %lastalarm = ();
@@ -226,8 +223,7 @@ while( my $line = <$socket> )
             print "\tsent mail\n";
 
 	    #send sms
-            my $smscount = send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
-            print "\tsent $smscount sms\n";
+            send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
 
             #reset lastalarm
             %lastalarm = ();
@@ -240,19 +236,20 @@ while( my $line = <$socket> )
     }
     elsif( $cmd eq '104' )
     {
+        my $filename = textdecode($params[2]);
         if( $params[1] == 0 )
         {
             $recordingstart = undef;
-            print "Aufname beendet: $params[2]\n";
+            print "Aufname beendet: $filename\n";
         }
         elsif( $params[1] == 1 )
         {
             $recordingstart = time();
-            print "Aufname gestartet: $params[2]\n";
+            print "Aufname gestartet: $filename\n";
         }
         elsif( $params[1] == 2 )
         {
-            print "Aufname verlängert: $params[2]\n";
+            print "Aufname verlängert: $filename\n";
         }
     }
     elsif( $cmd eq '101' )
