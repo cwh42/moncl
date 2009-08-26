@@ -6,6 +6,7 @@ use MIME::Lite;
 use Net::Clickatell;
 
 my $maxdelta_t = 3;
+my $recording_length = 25;
 
 my $mail_from = 'ffw@goessenreuth.de';
 my $mail_server = 'mail.webeve.de';
@@ -24,14 +25,18 @@ my %people = ( cwh => { name => 'Christopher Hofmann', phone => '01702636472', e
                seggl => { name => 'Markus Matussek', phone => '01718813863', email => 'markus.matussek@glendimplex.de' },
                andrea => { name => 'Andrea Herzog', phone => '015111701351', email => 'la-andi@gmx.de' },
                achim => { name => 'Achim Geyer', phone => '01607634981', email => 'geyer.achim@landkreis-kulmbach.de' },
-               xaver => { name => 'Alexander Schneider', phone => '015112446132', email => 'alexander.schneider@novem.de' });
+               xaver => { name => 'Alexander Schneider', phone => '015112446132', email => 'alexander.schneider@novem.de' },
+               rainer => { name => 'Rainer Hartmann', phone => '01604616195', email => '' },
+               langers => { name => 'Michael Hartmann', phone => '01717788775', email => 'harmic80@webeve.de' },
+               langers_arbeit => { name => 'Michael Hartmann', phone => '', email => 'Michael.Hartmann@fob.lsv.de' },
+               langerswolfgang => { name => 'Wolfgang Hartmann', phone => '01605234235', email => '' } );
 
 # cwh => { name => '', phone => '', email => '' }
 
 my %loops = ( default => { email => [qw(cwh)] },
 	      23154 => { name => 'FF Goessenreuth',
-                         email => [qw(cwh seggl achim xaver)],
-                         sms => [qw(cwh seggl andrea xaver)] },
+                         email => [qw(cwh seggl achim xaver langers langers_arbeit)],
+                         sms => [qw(cwh seggl andrea xaver rainer langers langerswolfgang)] },
               23152 => { name => 'FF Hi. od. La. (152)',
                          email => [qw(cwh)],
                          sms => [qw(cwh)] },
@@ -210,8 +215,8 @@ while( my $line = <$socket> )
         if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
         {
             # trigger recording
-            my $duration = 20;
-            $duration = time() - $recordingstart if(defined($recordingstart));
+            my $duration = $recording_length;
+            #$duration = time() - $recordingstart if(defined($recordingstart));
             command("204:$alarmdata{channel}:$duration");
 
 	    # print message to STDOUT
