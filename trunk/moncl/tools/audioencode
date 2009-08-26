@@ -1,0 +1,7 @@
+#!/bin/bash
+
+IN=$1
+OUT=`dirname $1`/`basename $1 .raw`.wav
+
+sox -r 22050 -s -b 16 -c 1 $IN -e gsm -r 8k $OUT
+echo $OUT

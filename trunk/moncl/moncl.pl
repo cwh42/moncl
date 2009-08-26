@@ -168,6 +168,30 @@ sub send_email
 		AuthPass => $mail_pass);
 }
 
+# hack
+sub tmp_send_mail
+{
+    my ( $file ) = @_;
+
+    my $mail = MIME::Lite->new( From => "FF Alarmierung <$mail_from>",
+                                Subject => "Letzte Aufnahme",
+                                'Message-ID' => msgid($mail_from),
+                                Precedence => 'bulk',
+                                Type => 'multipart/mixed' );
+    $mail->add("To" => $loops{default}->{email}||[]);
+
+    $mail->attach( Type => 'audio/wav',
+                   Path => $file );
+
+    #print $mail->as_string();
+    $mail->send('smtp',
+		$mail_server,
+		Timeout => 60,
+		Hello => '127.0.0.1',
+                AuthUser => $mail_user,
+		AuthPass => $mail_pass);
+}
+
 sub send_sms
 {
     my ($loop, $type, $time) = @_;
@@ -194,7 +218,6 @@ sub send_sms
 }
 
 my %lastalarm = ();
-my $recordingstart;
 
 while( my $line = <$socket> )
 {
@@ -216,7 +239,6 @@ while( my $line = <$socket> )
         {
             # trigger recording
             my $duration = $recording_length;
-            #$duration = time() - $recordingstart if(defined($recordingstart));
             command("204:$alarmdata{channel}:$duration");
 
 	    # print message to STDOUT
@@ -244,12 +266,14 @@ while( my $line = <$socket> )
         my $filename = textdecode($params[2]);
         if( $params[1] == 0 )
         {
-            $recordingstart = undef;
             print "Aufname beendet: $filename\n";
+
+            # ugly quick hack, needs to be fixed:
+            my $compressedfile = `audioconvert $filename`;
+            tmp_send_mail($compressedfile);
         }
         elsif( $params[1] == 1 )
         {
-            $recordingstart = time();
             print "Aufname gestartet: $filename\n";
         }
         elsif( $params[1] == 2 )
