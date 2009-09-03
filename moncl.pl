@@ -46,6 +46,8 @@ my %loops = ( default => { email => [qw(cwh)] },
 
 # ====================================
 
+my $PROTOCOL = '0004';
+
 my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    1 => 'Melderalarmierung (1)',
                    2 => 'Feueralarm',
@@ -54,16 +56,18 @@ my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    5 => 'Warnung',
                    6 => 'Entwarnung' );
 
-my %errorcodes = ( '000' => "Unbekannter Fehler", 
-                   '001' => "Not logged In",      
-                   '002' => "Not Authorized",     
-                   '003' => "False Login",        
-                   '004' => "Protocoll Error",    
-                   '005' => "Not Implemented",    
-                   '006' => "Hardware Fault",     
-                   '007' => "Write Fault",        
-                   '008' => "Version Error",      
-                   '009' => "Function deactivated" );
+my %errorcodes = ( '000' => "unknown error", 
+                   '001' => "not logged in",      
+                   '002' => "not authorized",     
+                   '003' => "login error",        
+                   '004' => "protocoll error",    
+                   '005' => "not implemented",    
+                   '006' => "hardware fault",     
+                   '007' => "write fault",        
+                   '008' => "version error",      
+                   '009' => "function disabled" );
+
+my @inquiry_keys = qw(end name os version protocol plugins);
 
 my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
@@ -76,16 +80,21 @@ my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
     or die("Could not connect: $@\n");
 
 $socket->autoflush(1);
-$/ = "\r\n";
 
+# Unfortunately monitord always uses DOS line endings:
+binmode($socket, ':crlf');
+
+# Send a command to server
 sub command
 {
-    print $socket $_[0].$/;
+    print timefmt().": Sending $_[0]\n";
+    print $socket "$_[0]\n";
 }
 
+# Format an epoch te value human readable
 sub timefmt
 {
-    my $epoch = shift;
+    my $epoch = shift || time();
 
     my @timedate = localtime($epoch);
     $timedate[4]++;
@@ -95,13 +104,14 @@ sub timefmt
     return(sprintf('%s, %02d.%02d.%d %02d:%02d:%02d', @timedate[6,3,4,5,2,1,0]));
 }
 
+# Convert hexdumped strings to readable ones
 sub textdecode
 {
     my $code = shift;
     my $decode = '';
     my $i = 0;
 
-    while( my $chr = substr( $code, $i, 2 ) )
+    while( defined($code) && ( my $chr = substr( $code, $i, 2 ) ) )
     {
         $decode .= chr(hex($chr));
 	$i+=2;
@@ -110,6 +120,7 @@ sub textdecode
     return $decode;
 }
 
+# Generate an email message-id
 sub msgid
 {
     my $from = shift || 'root@localhost';
@@ -121,6 +132,7 @@ sub msgid
     return sprintf('<%d%02d%02d%02d%02d.%05d.%s>', @timedate[5,4,3,2,1], rand($timedate[0]*1694), $from);
 }
 
+# Send an email notifying about an alarm
 sub send_email
 {
     my ($loop, $type, $time, $file ) = @_;
@@ -131,7 +143,7 @@ sub send_email
     my $what = $alarmtypes{$type} || $type;
     my $to = $loopdata->{email} || [];
 
-    my $text = sprintf( "%s: %s %s", timefmt($time), $what, $who);
+    my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
 
     my $mail = MIME::Lite->new( From => "FF Alarmierung <$mail_from>",
                                 Subject => "$what $who",
@@ -168,7 +180,8 @@ sub send_email
 		AuthPass => $mail_pass);
 }
 
-# hack
+# Temporary hack:
+# Send and recorded soundfile via email
 sub tmp_send_mail
 {
     my ( $file ) = @_;
@@ -192,6 +205,7 @@ sub tmp_send_mail
 		AuthPass => $mail_pass);
 }
 
+# Send an GSM text message (SMS) notifying about an alarm
 sub send_sms
 {
     my ($loop, $type, $time) = @_;
@@ -217,14 +231,56 @@ sub send_sms
     }
 }
 
+# Send inquiry to find out server's capabilities
+command('210');
+
 my %lastalarm = ();
 
 while( my $line = <$socket> )
 {
-    chomp( $line );
-    my ( $cmd, @params) = split(/:/, $line );
+    chomp($line);
 
-    if( $cmd eq '300' )
+    ($line, my $comment) = split(/;/, $line);
+    my ($cmd, @params) = split(/:/, $line);
+
+    if( $cmd eq '100' )
+    {
+        print timefmt().": Ok\n";
+    }
+    elsif( $cmd eq '101' )
+    {
+        my $errmsg = $errorcodes{$params[0]} || '?';
+        print timefmt().": Error $params[0]: $errmsg\n";
+    }
+    elsif( $cmd eq '104' )
+    {
+        my $filename = textdecode($params[2]);
+        if( $params[1] == 0 )
+        {
+            print "stopped recording: $filename\n";
+
+            # ugly quick hack, needs to be fixed:
+            my $compressedfile = `audioconvert $filename`;
+            print "\taudioconverting failed\n" unless $compressedfile;
+
+            eval { tmp_send_mail($compressedfile) };
+            print "\tsending email failed: $@\n" if $@;
+        }
+        elsif( $params[1] == 1 )
+        {
+            print "started recording: $filename\n";
+        }
+        elsif( $params[1] == 2 )
+        {
+            print "continue recording: $filename\n";
+        }
+    }
+    elsif( $cmd eq '111' )
+    {
+        my $value = ( $params[0] == 3 || $params[0] == 4 ) ? $params[1] : textdecode($params[1]);
+        print timefmt().": $inquiry_keys[$params[0]]: $value\n";
+    }
+    elsif( $cmd eq '300' )
     {
         my %alarmdata = ();
         @alarmdata{qw(time channel loop type text)} = @params;
@@ -238,56 +294,40 @@ while( my $line = <$socket> )
         if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
         {
             # trigger recording
-            my $duration = $recording_length;
-            command("204:$alarmdata{channel}:$duration");
+            command("204:$alarmdata{channel}:$recording_length");
 
 	    # print message to STDOUT
             my $msg = sprintf( "%s: %s %s", timefmt($alarmdata{time}), $alarmtypes{$alarmdata{type}}, $who);
             print $msg."\n";
 
 	    # send emails
-            send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
-            print "\tsent mail\n";
+            eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
+
+            if($@)
+            {
+                print "\tsending email failed: $@\n";
+            }
+            else
+            {
+                print "\tsent email\n";
+            }
 
 	    #send sms
-            send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
+            eval { send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
+            print "\tsending sms failed: $@\n" if $@;
 
             #reset lastalarm
             %lastalarm = ();
         }
         else
         {
-            print timefmt($alarmdata{time}).": Einzelnes Quintett $who\n";
+            print timefmt($alarmdata{time}).": Single quintet $who\n";
             %lastalarm = %alarmdata;
         }
     }
-    elsif( $cmd eq '104' )
-    {
-        my $filename = textdecode($params[2]);
-        if( $params[1] == 0 )
-        {
-            print "Aufname beendet: $filename\n";
-
-            # ugly quick hack, needs to be fixed:
-            my $compressedfile = `audioconvert $filename`;
-            tmp_send_mail($compressedfile);
-        }
-        elsif( $params[1] == 1 )
-        {
-            print "Aufname gestartet: $filename\n";
-        }
-        elsif( $params[1] == 2 )
-        {
-            print "Aufname verlängert: $filename\n";
-        }
-    }
-    elsif( $cmd eq '101' )
-    {
-        print "Fehler: ".$errorcodes{$params[0]}."\n";
-    }
     else
     {
-        print "$line\n";
+        print timefmt().": $line\n";
     }
 }
 
