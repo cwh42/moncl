@@ -235,6 +235,7 @@ sub send_sms
 command('210');
 
 my %lastalarm = ();
+my %server_info = ();
 
 while( my $line = <$socket> )
 {
@@ -257,7 +258,7 @@ while( my $line = <$socket> )
         my $filename = textdecode($params[2]);
         if( $params[1] == 0 )
         {
-            print "stopped recording: $filename\n";
+            print timefmt().": stopped recording: $filename\n";
 
             # ugly quick hack, needs to be fixed:
             my $compressedfile = `audioconvert $filename`;
@@ -268,17 +269,19 @@ while( my $line = <$socket> )
         }
         elsif( $params[1] == 1 )
         {
-            print "started recording: $filename\n";
+            print timefmt().": started recording: $filename\n";
         }
         elsif( $params[1] == 2 )
         {
-            print "continue recording: $filename\n";
+            print timefmt().": continue recording: $filename\n";
         }
     }
     elsif( $cmd eq '111' )
     {
         my $value = ( $params[0] == 3 || $params[0] == 4 ) ? $params[1] : textdecode($params[1]);
-        print timefmt().": $inquiry_keys[$params[0]]: $value\n";
+        $server_info{$inquiry_keys[$params[0]]||$params[0]} = $value;
+
+        printf("%s: %s %s ver.%d protocol.%d\n", timefmt(), @server_info{qw(name os version protocol)}) if $params[0] == 0;
     }
     elsif( $cmd eq '300' )
     {
@@ -293,12 +296,12 @@ while( my $line = <$socket> )
 
         if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
         {
-            # trigger recording
-            command("204:$alarmdata{channel}:$recording_length");
-
 	    # print message to STDOUT
             my $msg = sprintf( "%s: %s %s", timefmt($alarmdata{time}), $alarmtypes{$alarmdata{type}}, $who);
             print $msg."\n";
+
+            # trigger recording
+            command("204:$alarmdata{channel}:$recording_length");
 
 	    # send emails
             eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
