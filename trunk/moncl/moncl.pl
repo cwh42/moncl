@@ -42,7 +42,16 @@ my %loops = ( default => { email => [qw(cwh)] },
                          sms => [qw(cwh)] },
               23153 => { name => 'FF Hi. od. La. (153)',
                          email => [qw(cwh)],
-                         sms => [qw(cwh)] } );
+                         sms => [qw(cwh)] },
+              23139 => { name => 'FF Marktleugast',
+                         email => [],
+                         sms => [] },
+              23598 => { name => 'Notfallseelsorge',
+                         email => [],
+                         sms => [] },
+              23591 => { name => 'THW',
+                         email => [],
+                         sms => [] } );
 
 # ====================================
 
@@ -261,7 +270,8 @@ while( my $line = <$socket> )
             print timefmt().": stopped recording: $filename\n";
 
             # ugly quick hack, needs to be fixed:
-            my $compressedfile = `audioconvert $filename`;
+            my $compressedfile = `/home/cwh/bin/audioencode $filename`;
+            chomp($compressedfile);
             print "\taudioconverting failed\n" unless $compressedfile;
 
             eval { tmp_send_mail($compressedfile) };
