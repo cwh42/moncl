@@ -29,14 +29,16 @@ my %people = ( cwh => { name => 'Christopher Hofmann', phone => '01702636472', e
                rainer => { name => 'Rainer Hartmann', phone => '01604616195', email => '' },
                langers => { name => 'Michael Hartmann', phone => '01717788775', email => 'harmic80@webeve.de' },
                langers_arbeit => { name => 'Michael Hartmann', phone => '', email => 'Michael.Hartmann@fob.lsv.de' },
-               langerswolfgang => { name => 'Wolfgang Hartmann', phone => '01605234235', email => '' } );
+               langerswolfgang => { name => 'Wolfgang Hartmann', phone => '01605234235', email => '' },
+               gernot => => { name => 'Gernot Geyer', phone => '01709233287', email => '' },
+               schlaubi => { name => 'Markus Schneider', phone => '01604434387', email => '' });
 
 # cwh => { name => '', phone => '', email => '' }
 
 my %loops = ( default => { email => [qw(cwh)] },
 	      23154 => { name => 'FF Goessenreuth',
                          email => [qw(cwh seggl achim xaver langers langers_arbeit)],
-                         sms => [qw(cwh seggl andrea xaver rainer langers langerswolfgang)] },
+                         sms => [qw(cwh seggl andrea xaver rainer langers langerswolfgang gernot schlaubi)] },
               23152 => { name => 'FF Hi. od. La. (152)',
                          email => [qw(cwh)],
                          sms => [qw(cwh)] },
