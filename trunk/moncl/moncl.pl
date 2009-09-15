@@ -5,8 +5,10 @@ use IO::Socket;
 use MIME::Lite;
 use Net::Clickatell;
 
-my $maxdelta_t = 3;
-my $recording_length = 25;
+my $host = 'localhost';
+my $port = 9333;
+my $user = 'test';
+my $pass = 'test';
 
 my $mail_from = 'ffw@goessenreuth.de';
 my $mail_server = 'mail.webeve.de';
@@ -55,9 +57,14 @@ my %loops = ( default => { email => [qw(cwh)] },
                          email => [],
                          sms => [] } );
 
+my $recording_length = 25;
+
 # ====================================
 
+my $maxdelta_t = 3;
+
 my $PROTOCOL = '0004';
+my $SEPARATOR = ':';
 
 my %alarmtypes = ( 0 => 'Melderalarmierung (0)',
                    1 => 'Melderalarmierung (1)',
@@ -84,8 +91,8 @@ my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
 # ------------------------------------
 
-my $socket = IO::Socket::INET->new( PeerAddr => 'localhost',
-                                    PeerPort => 9333,
+my $socket = IO::Socket::INET->new( PeerAddr => $host,
+                                    PeerPort => $port,
                                     Proto => 'tcp',
                                     Type => SOCK_STREAM )
     or die("Could not connect: $@\n");
@@ -98,8 +105,9 @@ binmode($socket, ':crlf');
 # Send a command to server
 sub command
 {
-    print timefmt().": Sending $_[0]\n";
-    print $socket "$_[0]\n";
+    my $cmd = join($SEPARATOR, @_);
+    print timefmt().": Sending $cmd\n";
+    print $socket "$cmd\n";
 }
 
 # Format an epoch te value human readable
@@ -129,6 +137,20 @@ sub textdecode
     }
 
     return $decode;
+}
+
+# Hexdump strings
+sub hexdump
+{
+    my $text = shift;
+
+    my $code = '';
+    foreach my $chr (split(//, $text))
+    {
+        $code .= sprintf('%x', ord($chr));
+    }
+
+    return $code;
 }
 
 # Generate an email message-id
@@ -244,6 +266,10 @@ sub send_sms
 
 # Send inquiry to find out server's capabilities
 command('210');
+sleep(1);
+
+# Request channel info
+command('203');
 
 my %lastalarm = ();
 my %server_info = ();
@@ -253,7 +279,7 @@ while( my $line = <$socket> )
     chomp($line);
 
     ($line, my $comment) = split(/;/, $line);
-    my ($cmd, @params) = split(/:/, $line);
+    my ($cmd, @params) = split(/$SEPARATOR/, $line);
 
     if( $cmd eq '100' )
     {
@@ -263,6 +289,16 @@ while( my $line = <$socket> )
     {
         my $errmsg = $errorcodes{$params[0]} || '?';
         print timefmt().": Error $params[0]: $errmsg\n";
+
+        if( $params[0] eq '001' )
+        {
+            command('220', hexdump($user), hexdump($pass), $PROTOCOL);
+        }
+        elsif( $params[0] eq '003' )
+        {
+            print timefmt().": Exiting.\n";
+            exit(1);
+        }
     }
     elsif( $cmd eq '104' )
     {
@@ -313,7 +349,7 @@ while( my $line = <$socket> )
             print $msg."\n";
 
             # trigger recording
-            command("204:$alarmdata{channel}:$recording_length");
+            command('204', $alarmdata{channel}, $recording_length);
 
 	    # send emails
             eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
