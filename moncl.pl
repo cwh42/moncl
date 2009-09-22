@@ -1,27 +1,43 @@
 #!/usr/bin/perl -w
 
 use strict;
+# let execute END routine when some signals are catched:
+use sigtrap qw(die untrapped normal-signals stack-trace any error-signals);
 use IO::Socket;
+use Time::HiRes qw(sleep);
 use MIME::Lite;
+use Log::Dispatch 2.23;
 use Net::Clickatell;
 
-my $host = 'localhost';
-my $port = 9333;
-my $user = 'test';
-my $pass = 'test';
+my $CONFIGFILE = 'moncl.conf';
 
-my $mail_from = 'ffw@goessenreuth.de';
-my $mail_server = 'mail.webeve.de';
-my $mail_user = 'cwh';
-my $mail_pass = 'ZDa!DaH?';
-#my $mail_server = 'relay.suse.de';
-#my $mail_user = '';
-#my $mail_pass = '';
+{ package Cfg; 
 
-my $sms_from = '491702636472';
-my $catell_api_id = '3187455';
-my $catell_user = 'cwhofmann';
-my $catell_pass = 'dam0kles';
+  # Setting config defaults
+  our $HOST = 'localhost';
+  our $PORT = 9333;
+  our $USER = '';
+  our $PASS = '';
+
+  our $MAIL_FROM = 'user@host';
+  our $MAIL_SERVER = 'localhost';
+  our $MAIL_USER = '';
+  our $MAIL_PASS = '';
+
+  our $SMS_FROM = '';
+  our $CATELL_API_ID = '';
+  our $CATELL_USER = '';
+  our $CATELL_PASS = '';
+
+  # Log levels:
+  # debug info notice warning error critical alert emergency
+  our $LOGLEVEL = 'warning';
+  our $LOGFILE = '';
+
+  our $RECORDING_LENGTH = 25;
+
+  do $CONFIGFILE or warn("Could not read config file $CONFIGFILE\n")
+}
 
 my %people = ( cwh => { name => 'Christopher Hofmann', phone => '01702636472', email => 'cwh@webeve.de' },
                seggl => { name => 'Markus Matussek', phone => '01718813863', email => 'markus.matussek@glendimplex.de' },
@@ -57,8 +73,6 @@ my %loops = ( default => { email => [qw(cwh)] },
                          email => [],
                          sms => [] } );
 
-my $recording_length = 25;
-
 # ====================================
 
 my $maxdelta_t = 3;
@@ -85,28 +99,53 @@ my %errorcodes = ( '000' => "unknown error",
                    '008' => "version error",      
                    '009' => "function disabled" );
 
+my %COMMANDS = ( 210 => 'Inquiry',
+                 220 => 'Login',
+                 299 => 'Logoff',
+                 202 => 'Keepalive',
+                 203 => 'Channel Info',
+                 204 => 'Audio Recording' );
+
 my @inquiry_keys = qw(end name os version protocol plugins);
 
 my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
 # ------------------------------------
 
-my $socket = IO::Socket::INET->new( PeerAddr => $host,
-                                    PeerPort => $port,
+my $LOGTARGET = $Cfg::LOGFILE ? 'File' : 'Screen';
+
+my %LOGTARGETS = ('File' => { min_level => $Cfg::LOGLEVEL,
+                              filename  => $Cfg::LOGFILE,
+                              mode      => 'append',
+                              autoflush => 1,
+                              newline   => 1 },
+                  'Screen' => { min_level => $Cfg::LOGLEVEL,
+                                stderr => 0,
+                                autoflush => 1,
+                                newline   => 1 } );
+    
+my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, $LOGTARGETS{$LOGTARGET}] ],
+                              callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
+
+$log->info("Loglevel: ".$Cfg::LOGLEVEL);
+$log->notice("Trying to connect to $Cfg::HOST");
+
+my $socket = IO::Socket::INET->new( PeerAddr => $Cfg::HOST,
+                                    PeerPort => $Cfg::PORT,
                                     Proto => 'tcp',
                                     Type => SOCK_STREAM )
     or die("Could not connect: $@\n");
 
 $socket->autoflush(1);
-
-# Unfortunately monitord always uses DOS line endings:
 binmode($socket, ':crlf');
+
+# ------------------------------------
 
 # Send a command to server
 sub command
 {
     my $cmd = join($SEPARATOR, @_);
-    print timefmt().": Sending $cmd\n";
+    $log->info("Sending $cmd ($COMMANDS{$_[0]})");
     print $socket "$cmd\n";
 }
 
@@ -120,7 +159,7 @@ sub timefmt
     $timedate[5] += 1900;
     $timedate[6] = $wdays[$timedate[6]];
 
-    return(sprintf('%s, %02d.%02d.%d %02d:%02d:%02d', @timedate[6,3,4,5,2,1,0]));
+    return(sprintf('%s,%02d.%02d.%d %02d:%02d:%02d', @timedate[6,3,4,5,2,1,0]));
 }
 
 # Convert hexdumped strings to readable ones
@@ -178,9 +217,9 @@ sub send_email
 
     my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
 
-    my $mail = MIME::Lite->new( From => "FF Alarmierung <$mail_from>",
+    my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
                                 Subject => "$what $who",
-                                'Message-ID' => msgid($mail_from),
+                                'Message-ID' => msgid($Cfg::MAIL_FROM),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
 
@@ -204,13 +243,12 @@ sub send_email
                        Path => $file );
     }
 
-    #print $mail->as_string();
     $mail->send('smtp',
-		$mail_server,
+		$Cfg::MAIL_SERVER,
 		Timeout => 60,
 		Hello => '127.0.0.1',
-                AuthUser => $mail_user,
-		AuthPass => $mail_pass);
+                AuthUser => $Cfg::MAIL_USER,
+		AuthPass => $Cfg::MAIL_PASS);
 }
 
 # Temporary hack:
@@ -219,9 +257,9 @@ sub tmp_send_mail
 {
     my ( $file ) = @_;
 
-    my $mail = MIME::Lite->new( From => "FF Alarmierung <$mail_from>",
+    my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
                                 Subject => "Letzte Aufnahme",
-                                'Message-ID' => msgid($mail_from),
+                                'Message-ID' => msgid($Cfg::MAIL_FROM),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
     $mail->add("To" => $loops{default}->{email}||[]);
@@ -229,13 +267,12 @@ sub tmp_send_mail
     $mail->attach( Type => 'audio/wav',
                    Path => $file );
 
-    #print $mail->as_string();
     $mail->send('smtp',
-		$mail_server,
+		$Cfg::MAIL_SERVER,
 		Timeout => 60,
 		Hello => '127.0.0.1',
-                AuthUser => $mail_user,
-		AuthPass => $mail_pass);
+                AuthUser => $Cfg::MAIL_USER,
+		AuthPass => $Cfg::MAIL_PASS);
 }
 
 # Send an GSM text message (SMS) notifying about an alarm
@@ -249,24 +286,25 @@ sub send_sms
     my $what = $alarmtypes{$type} || $type;
     my $to = $loopdata->{sms} || [];
 
-    my $clickatell = Net::Clickatell->new( API_ID => $catell_api_id,
-                                           USERNAME =>$catell_user,
-                                           PASSWORD =>$catell_pass );
+    my $clickatell = Net::Clickatell->new( API_ID => $Cfg::CATELL_API_ID,
+                                           USERNAME =>$Cfg::CATELL_USER,
+                                           PASSWORD =>$Cfg::CATELL_PASS );
 
     my @to = grep {ref($people{$_}) && $people{$_}->{phone} && ($_ = $people{$_}->{phone})} @$to;
 
     if(@to)
     {
-        print "\tSMS to ".scalar(@to)." number(s) with text \"$what $who\"\n";
-        print "\t".$clickatell->sendBasicSMSMessage($sms_from,
-                                                    join(',',@to),
-                                                    "$what $who")."\n";
+        $log->info("SMS to ".scalar(@to)." number(s) with text \"$what $who\"");
+        my $res = $clickatell->sendBasicSMSMessage($Cfg::SMS_FROM,
+                                                   join(',',@to),
+                                                   "$what $who")."\n";
+        $log->debug($res);
     }
 }
 
 # Send inquiry to find out server's capabilities
 command('210');
-sleep(1);
+sleep(.5);
 
 # Request channel info
 command('203');
@@ -283,55 +321,56 @@ while( my $line = <$socket> )
 
     if( $cmd eq '100' )
     {
-        print timefmt().": Ok\n";
+        $log->debug("Ok from server.");
     }
     elsif( $cmd eq '101' )
     {
         my $errmsg = $errorcodes{$params[0]} || '?';
-        print timefmt().": Error $params[0]: $errmsg\n";
+        $log->error("Error $params[0]: $errmsg");
 
         if( $params[0] eq '001' )
         {
-            command('220', hexdump($user), hexdump($pass), $PROTOCOL);
+            # Login necessary. Doing that:
+            command('220', hexdump($Cfg::USER), hexdump($Cfg::PASS), $PROTOCOL);
         }
         elsif( $params[0] eq '003' )
         {
-            print timefmt().": Exiting.\n";
+            # Login error
             exit(1);
         }
     }
-    elsif( $cmd eq '104' )
+    elsif( $cmd eq '104' ) # Recording response
     {
         my $filename = textdecode($params[2]);
         if( $params[1] == 0 )
         {
-            print timefmt().": stopped recording: $filename\n";
+            $log->info("stopped recording: $filename");
 
             # ugly quick hack, needs to be fixed:
             my $compressedfile = `/home/cwh/bin/audioencode $filename`;
             chomp($compressedfile);
-            print "\taudioconverting failed\n" unless $compressedfile;
+            $log->error("audioconverting failed") unless $compressedfile;
 
             eval { tmp_send_mail($compressedfile) };
-            print "\tsending email failed: $@\n" if $@;
+            $log->error("sending email failed: $@") if $@;
         }
         elsif( $params[1] == 1 )
         {
-            print timefmt().": started recording: $filename\n";
+            $log->info("started recording: $filename");
         }
         elsif( $params[1] == 2 )
         {
-            print timefmt().": continue recording: $filename\n";
+            $log->info("continue recording: $filename");
         }
     }
-    elsif( $cmd eq '111' )
+    elsif( $cmd eq '111' ) # Inquiry response
     {
         my $value = ( $params[0] == 3 || $params[0] == 4 ) ? $params[1] : textdecode($params[1]);
         $server_info{$inquiry_keys[$params[0]]||$params[0]} = $value;
 
-        printf("%s: %s %s ver.%d protocol.%d\n", timefmt(), @server_info{qw(name os version protocol)}) if $params[0] == 0;
+        $log->notice(sprintf('Connected: %s %s ver.%d protocol.%d', @server_info{qw(name os version protocol)})) if $params[0] == 0;
     }
-    elsif( $cmd eq '300' )
+    elsif( $cmd eq '300' ) # ZVEI Alarm
     {
         my %alarmdata = ();
         @alarmdata{qw(time channel loop type text)} = @params;
@@ -344,42 +383,49 @@ while( my $line = <$socket> )
 
         if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
         {
-	    # print message to STDOUT
             my $msg = sprintf( "%s: %s %s", timefmt($alarmdata{time}), $alarmtypes{$alarmdata{type}}, $who);
-            print $msg."\n";
+            $log->notice($msg);
 
             # trigger recording
-            command('204', $alarmdata{channel}, $recording_length);
+            command('204', $alarmdata{channel}, $Cfg::RECORDING_LENGTH);
 
 	    # send emails
             eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
 
             if($@)
             {
-                print "\tsending email failed: $@\n";
+                $log->error("sending email failed: $@");
             }
             else
             {
-                print "\tsent email\n";
+                $log->info("sent email");
             }
 
 	    #send sms
             eval { send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
-            print "\tsending sms failed: $@\n" if $@;
+            $log->error("sending sms failed: $@") if $@;
 
             #reset lastalarm
             %lastalarm = ();
         }
         else
         {
-            print timefmt($alarmdata{time}).": Single quintet $who\n";
+            $log->debug(timefmt($alarmdata{time}).": Single quintet $who");
             %lastalarm = %alarmdata;
         }
     }
     else
     {
-        print timefmt().": $line\n";
+        $log->debug($line);
     }
 }
 
-close($socket);
+END
+{
+    if($socket)
+    {
+        command(299);
+        close($socket);
+    }
+    $log->notice("Exiting.");
+}
