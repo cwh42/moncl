@@ -1,5 +1,28 @@
 #!/usr/bin/perl -w
 
+##############################################################################
+#
+# moncl - a email and short message alerting client for monitord
+# Copyright (C) 2009 Christopher Hofmann <cwh@webeve.de> 
+#
+# ---------------------------------------------------------------------------
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51
+# Franklin St, Fifth Floor, Boston, MA 02110, USA
+#
+###############################################################################
+
 use strict;
 # let execute END routine when some signals are catched:
 use sigtrap qw(die untrapped normal-signals stack-trace any error-signals);
@@ -9,7 +32,9 @@ use MIME::Lite;
 use Log::Dispatch 2.23;
 use Net::Clickatell;
 
-my $CONFIGFILE = 'moncl.conf';
+our $VERSION = '0.9';
+
+my $CONFIGFILE = 'moncl.cfg';
 
 { package Cfg; 
 
@@ -36,42 +61,11 @@ my $CONFIGFILE = 'moncl.conf';
 
   our $RECORDING_LENGTH = 25;
 
+  our %PEOPLE = ();
+  our %LOOPS = ();
+
   do $CONFIGFILE or warn("Could not read config file $CONFIGFILE\n")
 }
-
-my %people = ( cwh => { name => 'Christopher Hofmann', phone => '01702636472', email => 'cwh@webeve.de' },
-               seggl => { name => 'Markus Matussek', phone => '01718813863', email => 'markus.matussek@glendimplex.de' },
-               andrea => { name => 'Andrea Herzog', phone => '015111701351', email => 'la-andi@gmx.de' },
-               achim => { name => 'Achim Geyer', phone => '01607634981', email => 'geyer.achim@landkreis-kulmbach.de' },
-               xaver => { name => 'Alexander Schneider', phone => '015112446132', email => 'alexander.schneider@novem.de' },
-               rainer => { name => 'Rainer Hartmann', phone => '01604616195', email => '' },
-               langers => { name => 'Michael Hartmann', phone => '01717788775', email => 'harmic80@webeve.de' },
-               langers_arbeit => { name => 'Michael Hartmann', phone => '', email => 'Michael.Hartmann@fob.lsv.de' },
-               langerswolfgang => { name => 'Wolfgang Hartmann', phone => '01605234235', email => '' },
-               gernot => => { name => 'Gernot Geyer', phone => '01709233287', email => '' },
-               schlaubi => { name => 'Markus Schneider', phone => '01604434387', email => '' });
-
-# cwh => { name => '', phone => '', email => '' }
-
-my %loops = ( default => { email => [qw(cwh)] },
-	      23154 => { name => 'FF Goessenreuth',
-                         email => [qw(cwh seggl achim xaver langers langers_arbeit)],
-                         sms => [qw(cwh seggl andrea xaver rainer langers langerswolfgang gernot schlaubi)] },
-              23152 => { name => 'FF Hi. od. La. (152)',
-                         email => [qw(cwh)],
-                         sms => [qw(cwh)] },
-              23153 => { name => 'FF Hi. od. La. (153)',
-                         email => [qw(cwh)],
-                         sms => [qw(cwh)] },
-              23139 => { name => 'FF Marktleugast',
-                         email => [],
-                         sms => [] },
-              23598 => { name => 'Notfallseelsorge',
-                         email => [],
-                         sms => [] },
-              23591 => { name => 'THW',
-                         email => [],
-                         sms => [] } );
 
 # ====================================
 
@@ -209,7 +203,7 @@ sub send_email
 {
     my ($loop, $type, $time, $file ) = @_;
 
-    my $loopdata = $loops{$loop} || $loops{default};
+    my $loopdata = $Cfg::LOOPS{$loop} || $Cfg::LOOPS{default};
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
@@ -223,7 +217,7 @@ sub send_email
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
 
-    my @to = grep {ref($people{$_}) && $people{$_}->{email} && ($_ = $people{$_}->{email})} @$to;
+    my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{email} && ($_ = $Cfg::PEOPLE{$_}->{email})} @$to;
 
     if(@to > 0)
     {
@@ -231,7 +225,7 @@ sub send_email
     }
     else
     {
-        $mail->add("To" => $loops{default}->{email}||[]);
+        $mail->add("To" => $Cfg::LOOPS{default}->{email}||[]);
     }
 
     $mail->attach( Type => 'TEXT',
@@ -262,7 +256,7 @@ sub tmp_send_mail
                                 'Message-ID' => msgid($Cfg::MAIL_FROM),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
-    $mail->add("To" => $loops{default}->{email}||[]);
+    $mail->add("To" => $Cfg::LOOPS{default}->{email}||[]);
 
     $mail->attach( Type => 'audio/wav',
                    Path => $file );
@@ -280,7 +274,7 @@ sub send_sms
 {
     my ($loop, $type, $time) = @_;
 
-    my $loopdata = $loops{$loop} || $loops{default};
+    my $loopdata = $Cfg::LOOPS{$loop} || $Cfg::LOOPS{default};
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
@@ -290,7 +284,7 @@ sub send_sms
                                            USERNAME =>$Cfg::CATELL_USER,
                                            PASSWORD =>$Cfg::CATELL_PASS );
 
-    my @to = grep {ref($people{$_}) && $people{$_}->{phone} && ($_ = $people{$_}->{phone})} @$to;
+    my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{phone} && ($_ = $Cfg::PEOPLE{$_}->{phone})} @$to;
 
     if(@to)
     {
@@ -378,7 +372,7 @@ while( my $line = <$socket> )
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
 
-	my $loopdata = $loops{$alarmdata{loop}} || $loops{default};
+	my $loopdata = $Cfg::LOOPS{$alarmdata{loop}} || $Cfg::LOOPS{default};
 	my $who = $loopdata->{name} || $alarmdata{loop};
 
         if( $alarmdata{time} - ($lastalarm{time}||0) <= $maxdelta_t && $alarmdata{loop} == $lastalarm{loop} )
