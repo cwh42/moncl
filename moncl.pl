@@ -34,37 +34,47 @@ use Net::Clickatell;
 
 our $VERSION = '0.9';
 
-my $CONFIGFILE = 'moncl.cfg';
+foreach my $configfile (qw(./moncl.conf ~/.moncl /etc/moncl.conf))
+{
+    #print "Trying to read $configfile\n";
+    last if(readconfig($configfile));
+}
 
-{ package Cfg; 
+# or warn("Could not read config file $configfile\n")
 
-  # Setting config defaults
-  our $HOST = 'localhost';
-  our $PORT = 9333;
-  our $USER = '';
-  our $PASS = '';
+sub readconfig
+{
+    my $configfile = shift;
 
-  our $MAIL_FROM = 'user@host';
-  our $MAIL_SERVER = 'localhost';
-  our $MAIL_USER = '';
-  our $MAIL_PASS = '';
+    package Cfg; 
 
-  our $SMS_FROM = '';
-  our $CATELL_API_ID = '';
-  our $CATELL_USER = '';
-  our $CATELL_PASS = '';
+    # Setting config defaults
+    our $HOST = 'localhost';
+    our $PORT = 9333;
+    our $USER = '';
+    our $PASS = '';
 
-  # Log levels:
-  # debug info notice warning error critical alert emergency
-  our $LOGLEVEL = 'warning';
-  our $LOGFILE = '';
+    our $MAIL_FROM = 'user@host';
+    our $MAIL_SERVER = 'localhost';
+    our $MAIL_USER = '';
+    our $MAIL_PASS = '';
 
-  our $RECORDING_LENGTH = 25;
+    our $SMS_FROM = '';
+    our $CATELL_API_ID = '';
+    our $CATELL_USER = '';
+    our $CATELL_PASS = '';
 
-  our %PEOPLE = ();
-  our %LOOPS = ();
+    # Log levels:
+    # debug info notice warning error critical alert emergency
+    our $LOGLEVEL = 'warning';
+    our $LOGFILE = '';
 
-  do $CONFIGFILE or warn("Could not read config file $CONFIGFILE\n")
+    our $RECORDING_LENGTH = 25;
+
+    our %PEOPLE = ();
+    our %LOOPS = ();
+
+    return do $configfile;
 }
 
 # ====================================
