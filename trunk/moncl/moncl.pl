@@ -34,10 +34,10 @@ use Net::Clickatell;
 
 our $VERSION = '0.9';
 
-foreach my $configfile (qw(./moncl.conf ~/.moncl /etc/moncl.conf))
+foreach my $conf (qw(./moncl.conf /etc/moncl.conf))
 {
-    #print "Trying to read $configfile\n";
-    last if(readconfig($configfile));
+    #print "Trying to read $conf\n";
+    last if(readconfig($conf));
 }
 
 # or warn("Could not read config file $configfile\n")
@@ -118,15 +118,15 @@ my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
 my $LOGTARGET = $Cfg::LOGFILE ? 'File' : 'Screen';
 
-my %LOGTARGETS = ('File' => { min_level => $Cfg::LOGLEVEL,
-                              filename  => $Cfg::LOGFILE,
-                              mode      => 'append',
+my %LOGTARGETS = ('File', { min_level => $Cfg::LOGLEVEL,
+                            filename  => $Cfg::LOGFILE,
+                            mode      => 'append',
+                            autoflush => 1,
+                            newline   => 1 },
+                  'Screen', { min_level => $Cfg::LOGLEVEL,
+                              stderr => 0,
                               autoflush => 1,
-                              newline   => 1 },
-                  'Screen' => { min_level => $Cfg::LOGLEVEL,
-                                stderr => 0,
-                                autoflush => 1,
-                                newline   => 1 } );
+                              newline   => 1 } );
     
 my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, $LOGTARGETS{$LOGTARGET}] ],
                               callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
