@@ -118,17 +118,17 @@ my @wdays = qw(So Mo Di Mi Do Fr Sa);
 
 my $LOGTARGET = $Cfg::LOGFILE ? 'File' : 'Screen';
 
-my %LOGTARGETS = ('File', { min_level => $Cfg::LOGLEVEL,
-                            filename  => $Cfg::LOGFILE,
-                            mode      => 'append',
-                            autoflush => 1,
-                            newline   => 1 },
-                  'Screen', { min_level => $Cfg::LOGLEVEL,
-                              stderr => 0,
-                              autoflush => 1,
-                              newline   => 1 } );
+my %LOGTARGETS = ('File' =>  { min_level => $Cfg::LOGLEVEL,
+                               filename  => $Cfg::LOGFILE,
+                               mode      => 'append',
+                               autoflush => 1,
+                               newline   => 1 },
+                  'Screen' => { min_level => $Cfg::LOGLEVEL,
+                                stderr => 0,
+                                autoflush => 1,
+                                newline   => 1 } );
     
-my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, $LOGTARGETS{$LOGTARGET}] ],
+my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, %{$LOGTARGETS{$LOGTARGET}}] ],
                               callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
 
 $log->info("Loglevel: ".$Cfg::LOGLEVEL);
