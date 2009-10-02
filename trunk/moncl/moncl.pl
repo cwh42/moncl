@@ -30,17 +30,85 @@ use IO::Socket;
 use Time::HiRes qw(sleep);
 use MIME::Lite;
 use Log::Dispatch 2.23;
+use Log::Dispatch::Screen;
+use Log::Dispatch::File;
 use Net::Clickatell;
 
 our $VERSION = '0.9';
 
-foreach my $conf (qw(./moncl.conf /etc/moncl.conf))
+my $DEBUG = 1;
+
+my $LOGTARGET = 'Screen';
+my $LOGLEVEL = $DEBUG ? 'debug' :'error';
+
+my @wdays = qw(So Mo Di Mi Do Fr Sa);
+
+# FIXME: That logging stuff is not very clean so far
+my %LOGTARGETS = ('File' =>  { name => 'File',
+                               min_level => $LOGLEVEL,
+                               filename  => '',
+                               mode      => 'append',
+                               autoflush => 1,
+                               newline   => 1 },
+                  'Screen' => { name => 'Screen', 
+                                min_level => $LOGLEVEL,
+                                stderr => 0,
+                                autoflush => 1,
+                                newline   => 1 } );
+    
+my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, %{$LOGTARGETS{$LOGTARGET}}] ],
+                              callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
+
+$log->info("Loglevel: ".$LOGLEVEL);
+
+#my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, %{$LOGTARGETS{$LOGTARGET}}] ],
+#                              callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
+# my $LOGTARGET = $Cfg::LOGFILE ? 'File' : 'Screen';
+
+my $used_configfile = '';
+
+foreach my $conf (qw(./moncl.conf ~/.moncl /etc/moncl.conf))
 {
-    #print "Trying to read $conf\n";
-    last if(readconfig($conf));
+    my ( $file ) = glob( $conf );
+    $log->debug("Trying config file $file");
+
+    if(defined($file) && readconfig($file))
+    {
+        $log->info("Using config file: $file");
+        $used_configfile = $file;
+        last;
+    }
+    
+    $log->error("Config file: $@") if($@);
 }
 
-# or warn("Could not read config file $configfile\n")
+if($Cfg::LOGFILE)
+{
+    $log->debug("Switching to Logfile $Cfg::LOGFILE");
+    $log->add( Log::Dispatch::File->new(
+                   name => 'File',
+                   min_level => $Cfg::LOGLEVEL,
+                   filename => $Cfg::LOGFILE,
+                   mode      => 'append',
+                   autoflush => 1,
+                   newline   => 1 ) );
+
+    $log->remove($LOGTARGET);
+}
+elsif($Cfg::LOGLEVEL ne $LOGLEVEL)
+{
+    $log->remove($LOGTARGET);
+    $log->add( Log::Dispatch::Screen->new(
+                   name => $LOGTARGET,
+                   min_level => $Cfg::LOGLEVEL,
+                   stderr => 0,
+                   mode => 'append',
+                   autoflush => 1,
+                   newline => 1 ) );
+    $log->info("New loglevel: ".$Cfg::LOGLEVEL);
+}
+
+# --------------------------
 
 sub readconfig
 {
@@ -112,26 +180,8 @@ my %COMMANDS = ( 210 => 'Inquiry',
 
 my @inquiry_keys = qw(end name os version protocol plugins);
 
-my @wdays = qw(So Mo Di Mi Do Fr Sa);
-
 # ------------------------------------
 
-my $LOGTARGET = $Cfg::LOGFILE ? 'File' : 'Screen';
-
-my %LOGTARGETS = ('File' =>  { min_level => $Cfg::LOGLEVEL,
-                               filename  => $Cfg::LOGFILE,
-                               mode      => 'append',
-                               autoflush => 1,
-                               newline   => 1 },
-                  'Screen' => { min_level => $Cfg::LOGLEVEL,
-                                stderr => 0,
-                                autoflush => 1,
-                                newline   => 1 } );
-    
-my $log = Log::Dispatch->new( outputs => [ [$LOGTARGET, %{$LOGTARGETS{$LOGTARGET}}] ],
-                              callbacks => sub { my %p = @_; return timefmt().' '.uc($p{level}).': '.$p{message}; } );
-
-$log->info("Loglevel: ".$Cfg::LOGLEVEL);
 $log->notice("Trying to connect to $Cfg::HOST");
 
 my $socket = IO::Socket::INET->new( PeerAddr => $Cfg::HOST,
