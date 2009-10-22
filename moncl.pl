@@ -23,6 +23,14 @@
 #
 ###############################################################################
 
+BEGIN {
+  my ($wd) = $0 =~ m-(.*)/- ;
+  $wd ||= '.';
+
+  chdir "$wd";
+  unshift @INC,  $wd;
+}
+
 use strict;
 # let execute END routine when some signals are catched:
 use sigtrap qw(die untrapped normal-signals stack-trace any error-signals);
