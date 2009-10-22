@@ -345,24 +345,39 @@ sub tmp_send_mail
 
     my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{email} && ($_ = $Cfg::PEOPLE{$_}->{email})} keys(%email_recipients);
 
-    $log->debug("Sending recording to: ".join(', ',@to));
+    if(@to == 0)
+    {
+        if(ref($Cfg::LOOPS{default}->{email}) eq 'ARRAY')
+        {
+            @to = @{$Cfg::LOOPS{default}->{email}};
+        }
+    }
 
-    my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
-                                Subject => "Letzte Aufnahme",
-                                'Message-ID' => msgid($Cfg::MAIL_FROM),
-                                Precedence => 'bulk',
-                                Type => 'multipart/mixed' );
-    $mail->add("To" => \@to);
+    if(@to > 0)
+    {
+        $log->debug("Sending recording to: ".join(', ',@to));
 
-    $mail->attach( Type => 'audio/wav',
-                   Path => $file );
+        my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
+                                    Subject => "Letzte Aufnahme",
+                                    'Message-ID' => msgid($Cfg::MAIL_FROM),
+                                    Precedence => 'bulk',
+                                    Type => 'multipart/mixed' );
+        $mail->add("To" => \@to);
 
-    $mail->send('smtp',
-		$Cfg::MAIL_SERVER,
-		Timeout => 60,
-		Hello => '127.0.0.1',
-                AuthUser => $Cfg::MAIL_USER,
-		AuthPass => $Cfg::MAIL_PASS);
+        $mail->attach( Type => 'audio/wav',
+                       Path => $file );
+
+        $mail->send('smtp',
+                    $Cfg::MAIL_SERVER,
+                    Timeout => 60,
+                    Hello => '127.0.0.1',
+                    AuthUser => $Cfg::MAIL_USER,
+                    AuthPass => $Cfg::MAIL_PASS);
+    }
+    else
+    {
+        $log->info("No email sent because of no recipients.");
+    }
 }
 
 # Send an GSM text message (SMS) notifying about an alarm
