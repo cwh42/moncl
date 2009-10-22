@@ -26,13 +26,13 @@
 use strict;
 # let execute END routine when some signals are catched:
 use sigtrap qw(die untrapped normal-signals stack-trace any error-signals);
+use SMS;
 use IO::Socket;
 use Time::HiRes qw(sleep);
 use MIME::Lite;
 use Log::Dispatch 2.23;
 use Log::Dispatch::Screen;
 use Log::Dispatch::File;
-use Net::Clickatell;
 
 our $VERSION = '0.9';
 
@@ -67,7 +67,7 @@ $log->info("Loglevel: ".$LOGLEVEL);
 
 my $used_configfile = '';
 
-foreach my $conf (qw(./moncl.conf ~/.moncl /etc/moncl.conf))
+foreach my $conf (qw(~/.moncl /etc/moncl.conf))
 {
     my ( $file ) = glob( $conf );
     $log->debug("Trying config file $file");
@@ -128,6 +128,9 @@ sub readconfig
     our $MAIL_PASS = '';
 
     our $SMS_FROM = '';
+    our $SMS_PROVIDER = '';
+    our $SMSKAUFEN_USER = '';
+    our $SMSKAUFEN_PASS = '';
     our $CATELL_API_ID = '';
     our $CATELL_USER = '';
     our $CATELL_PASS = '';
@@ -267,56 +270,81 @@ sub send_email
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
-    my $to = $loopdata->{email} || [];
+    my @to = @{$loopdata->{email} || []};
 
-    my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
+    @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{email} && ($_ = $Cfg::PEOPLE{$_}->{email})} @to;
 
-    my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
-                                Subject => "$what $who",
-                                'Message-ID' => msgid($Cfg::MAIL_FROM),
-                                Precedence => 'bulk',
-                                Type => 'multipart/mixed' );
-
-    my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{email} && ($_ = $Cfg::PEOPLE{$_}->{email})} @$to;
+    if(@to == 0)
+    {
+        if(ref($Cfg::LOOPS{default}->{email}) eq 'ARRAY')
+        {
+            @to = @{$Cfg::LOOPS{default}->{email}};
+        }
+    }
 
     if(@to > 0)
     {
-        $mail->add("To" => \@to);
+        my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
+
+        my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
+                                    To => \@to,
+                                    Subject => "$what $who",
+                                    'Message-ID' => msgid($Cfg::MAIL_FROM),
+                                    Precedence => 'bulk',
+                                    Type => 'multipart/mixed' );
+
+        #$mail->add("To" => \@to);
+        $mail->attach( Type => 'TEXT',
+                       Data => $text );
+
+        if( $file )
+        {
+            $mail->attach( Type => 'audio/mpeg',
+                           Path => $file );
+        }
+
+        my %auth = ();
+
+        %auth = ( AuthUser => $Cfg::MAIL_USER,
+                  AuthPass => $Cfg::MAIL_PASS ) if($Cfg::MAIL_USER);
+        
+        $mail->send('smtp',
+                    $Cfg::MAIL_SERVER,
+                    Timeout => 60,
+                    Hello => '127.0.0.1', %auth);
     }
     else
     {
-        $mail->add("To" => $Cfg::LOOPS{default}->{email}||[]);
+        $log->info("No email sent because of no recipients.");
     }
-
-    $mail->attach( Type => 'TEXT',
-                   Data => $text );
-
-    if( $file )
-    {
-        $mail->attach( Type => 'audio/mpeg',
-                       Path => $file );
-    }
-
-    $mail->send('smtp',
-		$Cfg::MAIL_SERVER,
-		Timeout => 60,
-		Hello => '127.0.0.1',
-                AuthUser => $Cfg::MAIL_USER,
-		AuthPass => $Cfg::MAIL_PASS);
 }
 
 # Temporary hack:
 # Send and recorded soundfile via email
 sub tmp_send_mail
 {
-    my ( $file ) = @_;
+    my ( $loops, $file ) = @_;
+
+    my %email_recipients = ();
+
+    foreach my $loop (@$loops )
+    {
+        foreach (@{$Cfg::LOOPS{$loop}->{email}})
+        {
+            $email_recipients{$_} = 1;
+        }
+    }
+
+    my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{email} && ($_ = $Cfg::PEOPLE{$_}->{email})} keys(%email_recipients);
+
+    $log->debug("Sending recording to: ".join(', ',@to));
 
     my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
                                 Subject => "Letzte Aufnahme",
                                 'Message-ID' => msgid($Cfg::MAIL_FROM),
                                 Precedence => 'bulk',
                                 Type => 'multipart/mixed' );
-    $mail->add("To" => $Cfg::LOOPS{default}->{email}||[]);
+    $mail->add("To" => \@to);
 
     $mail->attach( Type => 'audio/wav',
                    Path => $file );
@@ -338,21 +366,21 @@ sub send_sms
 
     my $who = $loopdata->{name} || $loop;
     my $what = $alarmtypes{$type} || $type;
-    my $to = $loopdata->{sms} || [];
+    my @to = @{$loopdata->{sms} || []};
 
-    my $clickatell = Net::Clickatell->new( API_ID => $Cfg::CATELL_API_ID,
-                                           USERNAME =>$Cfg::CATELL_USER,
-                                           PASSWORD =>$Cfg::CATELL_PASS );
-
-    my @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{phone} && ($_ = $Cfg::PEOPLE{$_}->{phone})} @$to;
+    @to = grep {ref($Cfg::PEOPLE{$_}) && $Cfg::PEOPLE{$_}->{phone} && ($_ = $Cfg::PEOPLE{$_}->{phone})} @to;
 
     if(@to)
     {
         $log->info("SMS to ".scalar(@to)." number(s) with text \"$what $who\"");
-        my $res = $clickatell->sendBasicSMSMessage($Cfg::SMS_FROM,
-                                                   join(',',@to),
-                                                   "$what $who")."\n";
+
+        my $res = SMS::send($Cfg::SMS_FROM, \@to, $who, $what);
+        
         $log->debug($res);
+    }
+    else
+    {
+        $log->info("No short message sent because of no recipients.");
     }
 }
 
@@ -365,6 +393,7 @@ command('203');
 
 my %lastalarm = ();
 my %server_info = ();
+my @loop_history = ();
 
 while( my $line = <$socket> )
 {
@@ -399,13 +428,15 @@ while( my $line = <$socket> )
         if( $params[1] == 0 )
         {
             $log->info("stopped recording: $filename");
+            $log->debug('recording relevant for loops: '.join(', ',@loop_history));
 
             # ugly quick hack, needs to be fixed:
-            my $compressedfile = `/home/cwh/bin/audioencode $filename`;
+            my $compressedfile = `/suse/cwh/bin/audioencode $filename`;
             chomp($compressedfile);
             $log->error("audioconverting failed") unless $compressedfile;
 
-            eval { tmp_send_mail($compressedfile) };
+            eval { tmp_send_mail(\@loop_history, $compressedfile) };
+            @loop_history = ();
             $log->error("sending email failed: $@") if $@;
         }
         elsif( $params[1] == 1 )
@@ -442,6 +473,9 @@ while( my $line = <$socket> )
 
             # trigger recording
             command('204', $alarmdata{channel}, $Cfg::RECORDING_LENGTH);
+
+            # store loop number for sending audio recording
+            push(@loop_history, $alarmdata{loop});
 
 	    # send emails
             eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
