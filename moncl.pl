@@ -357,7 +357,8 @@ sub send_email
 
     if( $file )
     {
-        $mail->attach( Type => $mimetypes->mimeTypeOf($file),
+        my $mtype = $mimetypes->mimeTypeOf($file);
+        $mail->attach( Type => "$mtype",
                        Disposition => 'attachment',
                        Path => $file );
     }
