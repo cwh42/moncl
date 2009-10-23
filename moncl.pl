@@ -38,6 +38,7 @@ use SMS;
 use IO::Socket;
 use Time::HiRes qw(sleep);
 use MIME::Lite;
+use MIME::Types;
 use Log::Dispatch 2.23;
 use Log::Dispatch::Screen;
 use Log::Dispatch::File;
@@ -143,12 +144,14 @@ sub readconfig
     our $CATELL_USER = '';
     our $CATELL_PASS = '';
 
+    our $AUDIO_RECODER = '';
+
     # Log levels:
     # debug info notice warning error critical alert emergency
     our $LOGLEVEL = 'warning';
     our $LOGFILE = '';
 
-    our $RECORDING_LENGTH = 25;
+    our $RECORDING_LENGTH = 30;
 
     our %PEOPLE = ();
     our %LOOPS = ();
@@ -203,6 +206,8 @@ my $socket = IO::Socket::INET->new( PeerAddr => $Cfg::HOST,
 
 $socket->autoflush(1);
 binmode($socket, ':crlf');
+
+my $mimetypes = MIME::Types->new;
 
 # ------------------------------------
 
@@ -270,7 +275,7 @@ sub msgid
 }
 
 # Send an email notifying about an alarm
-sub send_email
+sub send_alarm_email
 {
     my ($loop, $type, $time, $file ) = @_;
 
@@ -290,46 +295,13 @@ sub send_email
         }
     }
 
-    if(@to > 0)
-    {
-        my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
+    my $text = sprintf( "%s: %s %s", timefmt(), $what, $who);
 
-        my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
-                                    To => \@to,
-                                    Subject => "$what $who",
-                                    'Message-ID' => msgid($Cfg::MAIL_FROM),
-                                    Precedence => 'bulk',
-                                    Type => 'multipart/mixed' );
-
-        #$mail->add("To" => \@to);
-        $mail->attach( Type => 'TEXT',
-                       Data => $text );
-
-        if( $file )
-        {
-            $mail->attach( Type => 'audio/mpeg',
-                           Path => $file );
-        }
-
-        my %auth = ();
-
-        %auth = ( AuthUser => $Cfg::MAIL_USER,
-                  AuthPass => $Cfg::MAIL_PASS ) if($Cfg::MAIL_USER);
-        
-        $mail->send('smtp',
-                    $Cfg::MAIL_SERVER,
-                    Timeout => 60,
-                    Hello => '127.0.0.1', %auth);
-    }
-    else
-    {
-        $log->info("No email sent because of no recipients.");
-    }
+    return send_email(\@to, "$what $who", $text);
 }
 
-# Temporary hack:
-# Send and recorded soundfile via email
-sub tmp_send_mail
+# Send a recorded soundfile via email
+sub send_recording_email
 {
     my ( $loops, $file ) = @_;
 
@@ -353,31 +325,58 @@ sub tmp_send_mail
         }
     }
 
-    if(@to > 0)
+    return send_email(\@to, "Letzte Aufnahme",
+                      "Mitschnitt des Funkverkehrs nach der letzten Alarmierung",
+                      $file);
+}
+
+# Generic email sender
+sub send_email
+{
+    my ($to, $subject, $text, $file) = @_;
+
+    my $to_count = 0;
+    if( ref($to) eq 'ARRAY' )
     {
-        $log->debug("Sending recording to: ".join(', ',@to));
-
-        my $mail = MIME::Lite->new( From => "FF Alarmierung <$Cfg::MAIL_FROM>",
-                                    Subject => "Letzte Aufnahme",
-                                    'Message-ID' => msgid($Cfg::MAIL_FROM),
-                                    Precedence => 'bulk',
-                                    Type => 'multipart/mixed' );
-        $mail->add("To" => \@to);
-
-        $mail->attach( Type => 'audio/wav',
-                       Path => $file );
-
-        $mail->send('smtp',
-                    $Cfg::MAIL_SERVER,
-                    Timeout => 60,
-                    Hello => '127.0.0.1',
-                    AuthUser => $Cfg::MAIL_USER,
-                    AuthPass => $Cfg::MAIL_PASS);
+        $to_count = scalar(@$to);
     }
     else
     {
-        $log->info("No email sent because of no recipients.");
+        $to_count = 1;
     }
+
+    return 0 unless $to_count;
+
+    my $mail = MIME::Lite->new( From => $Cfg::MAIL_FROM,
+                                To => $to,
+                                Subject => $subject,
+                                'Message-ID' => msgid($Cfg::MAIL_FROM),
+                                Precedence => 'bulk',
+                                Type => 'TEXT',
+                                Data => $text);
+
+    if( $file )
+    {
+        $mail->attach( Type => $mimetypes->mimeTypeOf($file),
+                       Disposition => 'attachment',
+                       Path => $file );
+    }
+
+    my %auth = ();
+
+    %auth = ( AuthUser => $Cfg::MAIL_USER,
+              AuthPass => $Cfg::MAIL_PASS ) if($Cfg::MAIL_USER);
+
+    eval {
+        $mail->send('smtp',
+                    $Cfg::MAIL_SERVER,
+                    Timeout => 60,
+                    Hello => '127.0.0.1', %auth);
+    };
+
+    $log->error("sending email failed: $@") if($@);
+
+    return $to_count;
 }
 
 # Send an GSM text message (SMS) notifying about an alarm
@@ -409,14 +408,11 @@ sub send_sms
 
 # Send inquiry to find out server's capabilities
 command('210');
-sleep(.5);
-
-# Request channel info
-command('203');
+#sleep(.5);
 
 my %lastalarm = ();
 my %server_info = ();
-my @loop_history = ();
+my @recorded_loops = ();
 
 while( my $line = <$socket> )
 {
@@ -425,11 +421,11 @@ while( my $line = <$socket> )
     ($line, my $comment) = split(/;/, $line);
     my ($cmd, @params) = split(/$SEPARATOR/, $line);
 
-    if( $cmd eq '100' )
+    if( $cmd eq '100' ) # OK
     {
         $log->debug("Ok from server.");
     }
-    elsif( $cmd eq '101' )
+    elsif( $cmd eq '101' ) # ERROR
     {
         my $errmsg = $errorcodes{$params[0]} || '?';
         $log->error("Error $params[0]: $errmsg");
@@ -451,16 +447,17 @@ while( my $line = <$socket> )
         if( $params[1] == 0 )
         {
             $log->info("stopped recording: $filename");
-            $log->debug('recording relevant for loops: '.join(', ',@loop_history));
+            $log->debug('recording relevant for loops: '.join(', ',@recorded_loops));
 
             # ugly quick hack, needs to be fixed:
-            my $compressedfile = `/suse/cwh/bin/audioencode $filename`;
+            my $compressedfile = `$Cfg::AUDIO_RECODER $filename`;
             chomp($compressedfile);
             $log->error("audioconverting failed") unless $compressedfile;
 
-            eval { tmp_send_mail(\@loop_history, $compressedfile) };
-            @loop_history = ();
-            $log->error("sending email failed: $@") if $@;
+            my $mail_count = send_recording_email(\@recorded_loops, $compressedfile);
+            $log->info("sent emails to $mail_count recipient(s)");
+
+            @recorded_loops = ();
         }
         elsif( $params[1] == 1 )
         {
@@ -476,7 +473,14 @@ while( my $line = <$socket> )
         my $value = ( $params[0] == 3 || $params[0] == 4 ) ? $params[1] : textdecode($params[1]);
         $server_info{$inquiry_keys[$params[0]]||$params[0]} = $value;
 
-        $log->notice(sprintf('Connected: %s %s ver.%d protocol.%d', @server_info{qw(name os version protocol)})) if $params[0] == 0;
+        if( $params[0] == 0 ) # End of Inquiry response
+        {
+            $log->notice(sprintf('Connected: %s %s ver.%d protocol.%d',
+                                 @server_info{qw(name os version protocol)}));
+
+            # Inquiry was successful, so now request channel info:
+            command('203');
+        }
     }
     elsif( $cmd eq '300' ) # ZVEI Alarm
     {
@@ -498,19 +502,11 @@ while( my $line = <$socket> )
             command('204', $alarmdata{channel}, $Cfg::RECORDING_LENGTH);
 
             # store loop number for sending audio recording
-            push(@loop_history, $alarmdata{loop});
+            push(@recorded_loops, $alarmdata{loop});
 
 	    # send emails
-            eval { send_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
-
-            if($@)
-            {
-                $log->error("sending email failed: $@");
-            }
-            else
-            {
-                $log->info("sent email");
-            }
+            my $mail_count = send_alarm_email($alarmdata{loop}, $alarmdata{type}, $alarmdata{time});
+            $log->info("sent emails to $mail_count recipient(s)");
 
 	    #send sms
             eval { send_sms($alarmdata{loop}, $alarmdata{type}, $alarmdata{time}) };
