@@ -5,5 +5,9 @@ OUT_PATH=/home/cwh/alarm
 IN=$1
 OUT=$OUT_PATH/`basename $1 .raw`.amr
 
-sox -r 22050 -s -b 16 -c 1 $IN -t amr-nb -r 8k -C 0 $OUT noisered $OUT_PATH/profile 0.3 silence 1 5 2% -1 00:02 2% reverse silence 1 5 2% reverse
+sox -r 22050 -s -2 $IN -t amr-nb -r 8k -C 0 $OUT silence 1 5 2% -1 00:02 2% reverse silence 1 5 2% reverse
+#sox -r 22050 -s -2 $IN -t amr-nb -r 8k -C 0 $OUT noisered $OUT_PATH/profile 0.3 silence 1 5 2% -1 00:02 2% reverse silence 1 5 2% reverse
+
+scp -q $OUT ffw@webeve.de:alarm
+
 echo $OUT
