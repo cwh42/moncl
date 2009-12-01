@@ -1,6 +1,7 @@
 #!/bin/bash
 
 OUT_PATH=/home/cwh/alarm
+#OUT_PATH=/tmp/alarm
 
 IN=$1
 OUT=$OUT_PATH/`basename $1 .raw`.amr

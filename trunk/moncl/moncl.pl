@@ -2,7 +2,7 @@
 
 ##############################################################################
 #
-# moncl - a email and short message alerting client for monitord
+# moncl - an email and short message alerting client for monitord
 # Copyright (C) 2009 Christopher Hofmann <cwh@webeve.de>
 #
 # ---------------------------------------------------------------------------
@@ -38,8 +38,7 @@ use warnings;
 use sigtrap qw(die untrapped normal-signals stack-trace any error-signals);
 use SMS;
 use IO::Socket;
-
-#use Time::HiRes qw(sleep);
+use File::Basename;
 use MIME::Lite;
 use MIME::Types;
 use Log::Dispatch 2.23;
@@ -233,11 +232,22 @@ while ( my $line = <$socket> ) {
             # ugly quick hack, needs to be fixed:
             my $compressedfile = `$Cfg::AUDIO_RECODER $filename`;
             chomp($compressedfile);
-            $log->error("audioconverting failed") unless $compressedfile;
 
-            my $mail_count =
-              send_recording_email( \@recorded_loops, $compressedfile );
-            $log->info("sent emails to $mail_count recipient(s)");
+            if ($compressedfile) {
+
+                # send email
+                my $mail_count =
+                  send_recording_email( \@recorded_loops, $compressedfile );
+                $log->info("sent emails to $mail_count recipient(s)");
+
+                # send wap push
+                my $res =
+                  send_recording_sms( \@recorded_loops, $compressedfile );
+                $log->info($res);
+            }
+            else {
+                $log->error("audioconverting failed");
+            }
 
             @recorded_loops = ();
         }
@@ -346,6 +356,7 @@ sub readconfig {
     our $CATELL_PASS    = '';
 
     our $AUDIO_RECODER = '';
+    our $BASE_URL      = '';
 
     # Log levels:
     # debug info notice warning error critical alert emergency
@@ -563,6 +574,40 @@ sub send_sms {
     else {
         $log->info("No short message sent because of no recipients.");
     }
+}
+
+# Send an GSM message (WAP Push) pointing to the recorded audio file
+sub send_recording_sms {
+    my ( $loops, $file ) = @_;
+
+    my %message_recipients = ();
+
+    foreach my $loop (@$loops) {
+        foreach ( @{ $Cfg::LOOPS{$loop}->{wappush} } ) {
+            $message_recipients{$_} = 1;
+        }
+    }
+
+    my @to = grep {
+             ref( $Cfg::PEOPLE{$_} )
+          && $Cfg::PEOPLE{$_}->{phone}
+          && ( $_ = $Cfg::PEOPLE{$_}->{phone} )
+    } keys(%message_recipients);
+
+    if ( @to == 0 ) {
+        if ( ref( $Cfg::LOOPS{default}->{wappush} ) eq 'ARRAY' ) {
+            @to = @{ $Cfg::LOOPS{default}->{wappush} };
+        }
+    }
+
+    # SMS::send( $Cfg::SMS_FROM, \@to, $who, $what );
+    return SMS::send_wappush(
+        $Cfg::SMS_FROM,
+        \@to,
+        "Funkmitschnitt"
+        ,    #"Mitschnitt des Funkverkehrs nach der letzten Alarmierung",
+        $Cfg::BASE_URL . basename($file)
+    );
 }
 
 # Close socket and log a message when terminating
