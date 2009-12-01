@@ -29,7 +29,7 @@ use Exporter;
 use LWP::Simple;
 use Encode;
 use URI;
-use Net::Clickatell;
+use autouse 'Net::Clickatell';
 
 use vars qw(@ISA @EXPORT);
 
@@ -102,6 +102,57 @@ sub smskaufen {
   my $result = get($uri);
 
   return "($result) ".$returnvals{$result}."\n";
+}
+
+sub send_wappush {
+  my ($from, $to, $message, $file_url) = @_;
+
+  return 'URL missing' unless $file_url;
+
+  my %returnvals = ('100' => 'Dispatch OK',
+                    '101' => 'Dispatch OK',
+                    '111' => 'IP was blocked',
+                    '112' => 'Incorrect login data',
+                    '120' => 'Sender field is empty',
+                    '121' => 'Gateway field is empty',
+                    '122' => 'Text is empty',
+                    '123' => 'Recipient field is empty',
+                    '129' => 'Wrong sender',
+                    '130' => 'Gateway Error',
+                    '131' => 'Wrong number',
+                    '132' => 'Mobile phone is off',
+                    '133' => 'Query not possible',
+                    '134' => 'Number invalid',
+                    '140' => 'No credit',
+                    '150' => 'SMS blocked',
+                    '170' => 'Date wrong',
+                    '171' => 'Date too old',
+                    '172' => 'Too many numbers',
+                    '173' => 'Wrong format');
+
+  my $url = "http://www.smskaufen.com/sms/gateway/sms.php";
+  my $enc_message = encode( "iso-8859-1", $message );
+  my @return = ();
+
+  foreach my $recipient (@$to) {
+      my %params = ( id => $Cfg::SMSKAUFEN_USER,
+                     pw => $Cfg::SMSKAUFEN_PASS,
+                     type => 9,
+                     empfaenger => $recipient,
+                     absender => $from,
+                     text => $file_url,
+                     wapmeldung => $enc_message );
+
+      my $uri = URI->new($url);
+      $uri->query_form( %params );
+
+      print "$uri\n";
+
+      my $result = get($uri);
+      push @return, "($result) ".$returnvals{$result};
+  }
+
+  return join('; ', @return);
 }
 
 sub smstime
