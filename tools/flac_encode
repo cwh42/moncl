@@ -1,0 +1,7 @@
+#!/bin/bash
+
+IN=$1
+OUT=`basename $IN .raw`.flac
+OUTDIR=`dirname $IN`
+
+sox -r 22050 -s -2 $IN $OUTDIR/$OUT && rm $IN
