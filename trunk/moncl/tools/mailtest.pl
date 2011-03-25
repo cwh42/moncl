@@ -23,6 +23,46 @@ foreach my $conf (qw(~/.moncl /etc/moncl.conf)) {
 
 print send_email( \@to, "eMail Test", "Email versenden funktioniert" )."\n";
 
+sub readconfig {
+    my $configfile = shift;
+
+    package Cfg;
+
+    # Setting config defaults
+    our $HOST = 'localhost';
+    our $PORT = 9333;
+    our $USER = '';
+    our $PASS = '';
+
+    our $MAIL_FROM   = 'user@host';
+    our $MAIL_SERVER = 'localhost';
+    our $MAIL_USER   = '';
+    our $MAIL_PASS   = '';
+
+    our $SMS_FROM       = '';
+    our $SMS_PROVIDER   = '';
+    our $SMSKAUFEN_USER = '';
+    our $SMSKAUFEN_PASS = '';
+    our $CATELL_API_ID  = '';
+    our $CATELL_USER    = '';
+    our $CATELL_PASS    = '';
+
+    our $AUDIO_RECODER = '';
+    our $BASE_URL      = '';
+
+    # Log levels:
+    # debug info notice warning error critical alert emergency
+    our $LOGLEVEL = 'warning';
+    our $LOGFILE  = '';
+
+    our $RECORDING_LENGTH = 30;
+
+    our %PEOPLE = ();
+    our %LOOPS  = ();
+
+    return do $configfile;
+}
+
 sub send_email {
     my ( $to, $subject, $text ) = @_;
 
