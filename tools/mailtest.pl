@@ -4,7 +4,7 @@ use warnings;
 use strict;
 use MIME::Lite;
 
-my @to = qw(cwh@suse.de);
+my @to = '"Christopher Hofmann" <cwh@webeve.de>';
 
 my $used_configfile = '';
 
@@ -98,7 +98,7 @@ sub send_email {
             'smtp',
             $Cfg::MAIL_SERVER,
             Timeout => 60,
-            Hello   => '127.0.0.1',
+            Hello   => 'alarm.goessenreuth.de',
             %auth
         );
     };
