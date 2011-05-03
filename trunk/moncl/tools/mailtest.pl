@@ -47,7 +47,7 @@ sub readconfig {
     our $CATELL_USER    = '';
     our $CATELL_PASS    = '';
 
-    our $AUDIO_RECODER = '';
+    our $AUDIO_PROCESSOR = '';
     our $BASE_URL      = '';
 
     # Log levels:
