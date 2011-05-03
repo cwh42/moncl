@@ -243,7 +243,7 @@ while ( my $line = <$socket> ) {
                 # send wap push
                 my $res =
                   send_recording_sms( \@recorded_loops, $compressedfile );
-                $log->info($res);
+                $log->info("Recording SMS result: $res");
             }
             else {
                 $log->error("audioconverting failed");
@@ -434,27 +434,43 @@ sub msgid {
     );
 }
 
+# Get a list of recipients for the given notification kind and list of loops
+sub get_recipients
+{
+    my ($type, @loops) = @_;
+
+    my %recipients = ();
+
+    foreach my $loop (@loops) {
+        foreach ( @{ $Cfg::LOOPS{$loop}->{$type} } ) {
+            $recipients{$_} = 1;
+        }
+    }
+
+    # FIXME: Make using default loop optional
+    if ( %recipients == 0 ) {
+        foreach ( @{ $Cfg::LOOPS{default}->{$type} } ) {
+            $recipients{$_} = 1;
+        }
+    }
+
+    my @to = grep {
+             ref( $Cfg::PEOPLE{$_} )
+          && $Cfg::PEOPLE{$_}->{$type}
+          && ( $_ = $Cfg::PEOPLE{$_}->{$type} )
+    } keys(%recipients);
+
+    return @to;
+}
+
 # Send an email notifying about an alarm
 sub send_alarm_email {
     my ( $loop, $type, $time, $file ) = @_;
 
-    my $loopdata = $Cfg::LOOPS{$loop} || $Cfg::LOOPS{default};
-
-    my $who  = $loopdata->{name}  || $loop;
+    my $who  = $Cfg::LOOPS{$loop}->{name}  || $loop;
     my $what = $ALARMTYPES{$type} || $type;
-    my @to = @{ $loopdata->{email} || [] };
 
-    @to = grep {
-             ref( $Cfg::PEOPLE{$_} )
-          && $Cfg::PEOPLE{$_}->{email}
-          && ( $_ = $Cfg::PEOPLE{$_}->{email} )
-    } @to;
-
-    if ( @to == 0 ) {
-        if ( ref( $Cfg::LOOPS{default}->{email} ) eq 'ARRAY' ) {
-            @to = @{ $Cfg::LOOPS{default}->{email} };
-        }
-    }
+    my @to = get_recipients('email', $loop);
 
     my $text = sprintf( "%s: %s %s", timefmt(), $what, $who );
 
@@ -465,25 +481,7 @@ sub send_alarm_email {
 sub send_recording_email {
     my ( $loops, $file ) = @_;
 
-    my %email_recipients = ();
-
-    foreach my $loop (@$loops) {
-        foreach ( @{ $Cfg::LOOPS{$loop}->{email} } ) {
-            $email_recipients{$_} = 1;
-        }
-    }
-
-    my @to = grep {
-             ref( $Cfg::PEOPLE{$_} )
-          && $Cfg::PEOPLE{$_}->{email}
-          && ( $_ = $Cfg::PEOPLE{$_}->{email} )
-    } keys(%email_recipients);
-
-    if ( @to == 0 ) {
-        if ( ref( $Cfg::LOOPS{default}->{email} ) eq 'ARRAY' ) {
-            @to = @{ $Cfg::LOOPS{default}->{email} };
-        }
-    }
+    my @to = get_recipients('email', @$loops);
 
     return send_email(
         \@to,
@@ -537,7 +535,7 @@ sub send_email {
             'smtp',
             $Cfg::MAIL_SERVER,
             Timeout => 60,
-            Hello   => '127.0.0.1',
+            Hello   => 'alarm.goessenreuth.de',
             %auth
         );
     };
@@ -551,17 +549,9 @@ sub send_email {
 sub send_sms {
     my ( $loop, $type, $time ) = @_;
 
-    my $loopdata = $Cfg::LOOPS{$loop} || $Cfg::LOOPS{default};
-
-    my $who  = $loopdata->{name}  || $loop;
+    my $who  = $Cfg::LOOPS{$loop}->{name}  || $loop;
     my $what = $ALARMTYPES{$type} || $type;
-    my @to = @{ $loopdata->{sms} || [] };
-
-    @to = grep {
-             ref( $Cfg::PEOPLE{$_} )
-          && $Cfg::PEOPLE{$_}->{phone}
-          && ( $_ = $Cfg::PEOPLE{$_}->{phone} )
-    } @to;
+    my @to = get_recipients('sms', $loop);
 
     if (@to) {
         $log->info(
@@ -580,25 +570,7 @@ sub send_sms {
 sub send_recording_sms {
     my ( $loops, $file ) = @_;
 
-    my %message_recipients = ();
-
-    foreach my $loop (@$loops) {
-        foreach ( @{ $Cfg::LOOPS{$loop}->{wappush} } ) {
-            $message_recipients{$_} = 1;
-        }
-    }
-
-    my @to = grep {
-             ref( $Cfg::PEOPLE{$_} )
-          && $Cfg::PEOPLE{$_}->{phone}
-          && ( $_ = $Cfg::PEOPLE{$_}->{phone} )
-    } keys(%message_recipients);
-
-    if ( @to == 0 ) {
-        if ( ref( $Cfg::LOOPS{default}->{wappush} ) eq 'ARRAY' ) {
-            @to = @{ $Cfg::LOOPS{default}->{wappush} };
-        }
-    }
+    my @to = get_recipients('wappush', @$loops);
 
     # SMS::send( $Cfg::SMS_FROM, \@to, $who, $what );
     return SMS::send_wappush(
