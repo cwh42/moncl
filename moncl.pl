@@ -229,20 +229,23 @@ while ( my $line = <$socket> ) {
             $log->debug( 'recording relevant for loops: '
                   . join( ', ', @recorded_loops ) );
 
-            # ugly quick hack, needs to be fixed:
-            my $compressedfile = `$Cfg::AUDIO_RECODER $filename`;
-            chomp($compressedfile);
+            if ( $Cfg::AUDIO_PROCESSOR ) {
+                my $compressedfile = `$Cfg::AUDIO_PROCESSOR $filename`;
+                chomp($compressedfile);
+                if ( $compressedfile ) {
+                    $filename = $compressedfile;
+                }
+            }
 
-            if ($compressedfile) {
-
+            if ( $filename ) {
                 # send email
                 my $mail_count =
-                  send_recording_email( \@recorded_loops, $compressedfile );
+                  send_recording_email( \@recorded_loops, $filename );
                 $log->info("sent emails to $mail_count recipient(s)");
 
                 # send wap push
                 my $res =
-                  send_recording_sms( \@recorded_loops, $compressedfile );
+                  send_recording_sms( \@recorded_loops, $filename );
                 $log->info("Recording SMS result: $res");
             }
             else {
@@ -350,12 +353,12 @@ sub readconfig {
     our $SMS_FROM       = '';
     our $SMS_PROVIDER   = '';
     our $SMSKAUFEN_USER = '';
-    our $SMSKAUFEN_PASS = '';
+    our $SMSKAUFEN_APIKEY = '';
     our $CATELL_API_ID  = '';
     our $CATELL_USER    = '';
     our $CATELL_PASS    = '';
 
-    our $AUDIO_RECODER = '';
+    our $AUDIO_PROCESSOR = '';
     our $BASE_URL      = '';
 
     # Log levels:
@@ -448,7 +451,7 @@ sub get_recipients
     }
 
     # FIXME: Make using default loop optional
-    if ( %recipients == 0 ) {
+    if ( keys %recipients == 0 ) {
         foreach ( @{ $Cfg::LOOPS{default}->{$type} } ) {
             $recipients{$_} = 1;
         }
@@ -515,7 +518,7 @@ sub send_email {
     );
 
     if ($file) {
-        my $mtype = $mimetypes->mimeTypeOf($file);
+        my $mtype = $mimetypes->mimeTypeOf($file) || 'audio/x-raw-int';
         $mail->attach(
             Type        => "$mtype",
             Disposition => 'attachment',
