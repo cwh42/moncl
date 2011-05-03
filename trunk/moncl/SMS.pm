@@ -86,10 +86,11 @@ sub smskaufen {
   my $message = "$what $who";
   my $enc_message = encode( "iso-8859-1", $message );
   my %params = ( id => $Cfg::SMSKAUFEN_USER,
-                 pw => $Cfg::SMSKAUFEN_PASS,
+                 apikey => $Cfg::SMSKAUFEN_APIKEY,
                  type => 4,
+                 id_status => 1,
                  massen => 1,
-                 termin => smstime(),
+                 termin => '01.01.2000-00:00',
                  empfaenger => join(';',@$to),
                  absender => $from,
                  text => $enc_message );
@@ -136,7 +137,7 @@ sub send_wappush {
 
   foreach my $recipient (@$to) {
       my %params = ( id => $Cfg::SMSKAUFEN_USER,
-                     pw => $Cfg::SMSKAUFEN_PASS,
+                     apikey => $Cfg::SMSKAUFEN_APIKEY,
                      type => 9,
                      empfaenger => $recipient,
                      absender => $from,
