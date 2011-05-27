@@ -221,6 +221,14 @@ while ( my $line = <$socket> ) {
             exit(1);
         }
     }
+    elsif ( $cmd eq '103' )    # Channel Info
+    {
+        my $channel_num = $params[0];
+        my $channel_name = textdecode( $params[1] );
+        my $channel_features = $params[2];
+
+        $log->debug("Channel $channel_num: $channel_name ($channel_features)");
+    }
     elsif ( $cmd eq '104' )    # Recording response
     {
         my $filename = textdecode( $params[2] );
@@ -238,6 +246,9 @@ while ( my $line = <$socket> ) {
             }
 
             if ( $filename ) {
+                # write description file
+                write_desc_file( \@recorded_loops, $filename );
+
                 # send email
                 my $mail_count =
                   send_recording_email( \@recorded_loops, $filename );
@@ -478,6 +489,22 @@ sub send_alarm_email {
     my $text = sprintf( "%s: %s %s", timefmt(), $what, $who );
 
     return send_email( \@to, "$what $who", $text );
+}
+
+# Write loop numbers and names to file with same basename as recording file
+sub write_desc_file {
+    my ( $loops, $file ) = @_;
+
+    my $desc_file_name = join( '', (fileparse $file, qr/\.[^.]*/)[1,0]).".desc";
+
+    open DESC, ">$desc_file_name";
+
+    foreach my $loop (@$loops) {
+        my $name  = $Cfg::LOOPS{$loop}->{name} || '';
+        print DESC "$loop\t$name\n";
+    }
+    
+    close DESC;
 }
 
 # Send a recorded soundfile via email
