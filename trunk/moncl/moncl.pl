@@ -173,6 +173,13 @@ my %COMMANDS = (
 
 my @INQUIRY_KEYS = qw(end name os version protocol plugins);
 
+my %CHANNEL_MODULES = (
+    2**0 => 'ZVEI',
+    2**1 => 'FMS',
+    2**2 => 'POCSAC512',
+    2**3 => 'POCSAC1200'
+);
+
 $log->notice("Trying to connect to $Cfg::HOST");
 
 my $socket = IO::Socket::INET->new(
@@ -225,9 +232,9 @@ while ( my $line = <$socket> ) {
     {
         my $channel_num = $params[0];
         my $channel_name = textdecode( $params[1] );
-        my $channel_features = $params[2];
+        my $channel_features = join(', ', moduledecode($params[2])) || 'none';
 
-        $log->debug("Channel $channel_num: $channel_name ($channel_features)");
+        $log->info("#$channel_num: $channel_name ($channel_features)");
     }
     elsif ( $cmd eq '104' )    # Recording response
     {
@@ -419,6 +426,18 @@ sub textdecode {
     }
 
     return $decode;
+}
+
+# Decode loaded modules from channel info
+sub moduledecode {
+    my $val = shift;
+    my @loaded_modules = ();
+
+    foreach my $module ( keys(%CHANNEL_MODULES) ) {
+        push @loaded_modules, $CHANNEL_MODULES{$module} if $val & $module;
+    }
+
+    return @loaded_modules;
 }
 
 # Hexdump strings
