@@ -230,9 +230,10 @@ while ( my $line = <$socket> ) {
     }
     elsif ( $cmd eq '103' )    # Channel Info
     {
-        my $channel_num = $params[0];
-        my $channel_name = textdecode( $params[1] );
-        my $channel_features = join(', ', moduledecode($params[2])) || 'none';
+        my $channel_num      = $params[0];
+        my $channel_name     = textdecode( $params[1] );
+        my $channel_features = join( ', ', moduledecode( $params[2] ) )
+            || 'none';
 
         $log->info("#$channel_num: $channel_name ($channel_features)");
     }
@@ -242,28 +243,28 @@ while ( my $line = <$socket> ) {
         if ( $params[1] == 0 ) {
             $log->info("stopped recording: $filename");
             $log->debug( 'recording relevant for loops: '
-                  . join( ', ', @recorded_loops ) );
+                    . join( ', ', @recorded_loops ) );
 
-            if ( $Cfg::AUDIO_PROCESSOR ) {
+            if ($Cfg::AUDIO_PROCESSOR) {
                 my $compressedfile = `$Cfg::AUDIO_PROCESSOR $filename`;
                 chomp($compressedfile);
-                if ( $compressedfile ) {
+                if ($compressedfile) {
                     $filename = $compressedfile;
                 }
             }
 
-            if ( $filename ) {
+            if ($filename) {
+
                 # write description file
                 write_desc_file( \@recorded_loops, $filename );
 
                 # send email
-                my $mail_count =
-                  send_recording_email( \@recorded_loops, $filename );
+                my $mail_count
+                    = send_recording_email( \@recorded_loops, $filename );
                 $log->info("sent emails to $mail_count recipient(s)");
 
                 # send wap push
-                my $res =
-                  send_recording_sms( \@recorded_loops, $filename );
+                my $res = send_recording_sms( \@recorded_loops, $filename );
                 $log->info("Recording SMS result: $res");
             }
             else {
@@ -281,10 +282,10 @@ while ( my $line = <$socket> ) {
     }
     elsif ( $cmd eq '111' )    # Inquiry response
     {
-        my $value =
-          ( $params[0] == 3 || $params[0] == 4 )
-          ? $params[1]
-          : textdecode( $params[1] );
+        my $value
+            = ( $params[0] == 3 || $params[0] == 4 )
+            ? $params[1]
+            : textdecode( $params[1] );
         $server_info{ $INQUIRY_KEYS[ $params[0] ] || $params[0] } = $value;
 
         if ( $params[0] == 0 )    # End of Inquiry response
@@ -306,7 +307,8 @@ while ( my $line = <$socket> ) {
         # 0    1                 2               3                        4
         # Zeit:Kanalnummer(char):Schleife(text5):Sirenenalarmierung(char):Text
 
-        my $loopdata = $Cfg::LOOPS{ $alarmdata{loop} } || $Cfg::LOOPS{default};
+        my $loopdata = $Cfg::LOOPS{ $alarmdata{loop} }
+            || $Cfg::LOOPS{default};
         my $who = $loopdata->{name} || $alarmdata{loop};
 
         if (   $alarmdata{time} - ( $lastalarm{time} || 0 ) <= $maxdelta_t
@@ -324,8 +326,8 @@ while ( my $line = <$socket> ) {
             push( @recorded_loops, $alarmdata{loop} );
 
             # send emails
-            my $mail_count =
-              send_alarm_email( $alarmdata{loop}, $alarmdata{type},
+            my $mail_count
+                = send_alarm_email( $alarmdata{loop}, $alarmdata{type},
                 $alarmdata{time} );
             $log->info("sent emails to $mail_count recipient(s)");
 
@@ -368,16 +370,16 @@ sub readconfig {
     our $MAIL_USER   = '';
     our $MAIL_PASS   = '';
 
-    our $SMS_FROM       = '';
-    our $SMS_PROVIDER   = '';
-    our $SMSKAUFEN_USER = '';
+    our $SMS_FROM         = '';
+    our $SMS_PROVIDER     = '';
+    our $SMSKAUFEN_USER   = '';
     our $SMSKAUFEN_APIKEY = '';
-    our $CATELL_API_ID  = '';
-    our $CATELL_USER    = '';
-    our $CATELL_PASS    = '';
+    our $CATELL_API_ID    = '';
+    our $CATELL_USER      = '';
+    our $CATELL_PASS      = '';
 
     our $AUDIO_PROCESSOR = '';
-    our $BASE_URL      = '';
+    our $BASE_URL        = '';
 
     # Log levels:
     # debug info notice warning error critical alert emergency
@@ -430,7 +432,7 @@ sub textdecode {
 
 # Decode loaded modules from channel info
 sub moduledecode {
-    my $val = shift;
+    my $val            = shift;
     my @loaded_modules = ();
 
     foreach my $module ( keys(%CHANNEL_MODULES) ) {
@@ -468,9 +470,8 @@ sub msgid {
 }
 
 # Get a list of recipients for the given notification kind and list of loops
-sub get_recipients
-{
-    my ($type, @loops) = @_;
+sub get_recipients {
+    my ( $type, @loops ) = @_;
 
     my %recipients = ();
 
@@ -488,9 +489,9 @@ sub get_recipients
     }
 
     my @to = grep {
-             ref( $Cfg::PEOPLE{$_} )
-          && $Cfg::PEOPLE{$_}->{$type}
-          && ( $_ = $Cfg::PEOPLE{$_}->{$type} )
+               ref( $Cfg::PEOPLE{$_} )
+            && $Cfg::PEOPLE{$_}->{$type}
+            && ( $_ = $Cfg::PEOPLE{$_}->{$type} )
     } keys(%recipients);
 
     return @to;
@@ -500,10 +501,10 @@ sub get_recipients
 sub send_alarm_email {
     my ( $loop, $type, $time, $file ) = @_;
 
-    my $who  = $Cfg::LOOPS{$loop}->{name}  || $loop;
-    my $what = $ALARMTYPES{$type} || $type;
+    my $who  = $Cfg::LOOPS{$loop}->{name} || $loop;
+    my $what = $ALARMTYPES{$type}         || $type;
 
-    my @to = get_recipients('email', $loop);
+    my @to = get_recipients( 'email', $loop );
 
     my $text = sprintf( "%s: %s %s", timefmt(), $what, $who );
 
@@ -514,15 +515,16 @@ sub send_alarm_email {
 sub write_desc_file {
     my ( $loops, $file ) = @_;
 
-    my $desc_file_name = join( '', (fileparse $file, qr/\.[^.]*/)[1,0]).".desc";
+    my $desc_file_name
+        = join( '', ( fileparse $file, qr/\.[^.]*/ )[ 1, 0 ] ) . ".desc";
 
     open DESC, ">$desc_file_name";
 
     foreach my $loop (@$loops) {
-        my $name  = $Cfg::LOOPS{$loop}->{name} || '';
+        my $name = $Cfg::LOOPS{$loop}->{name} || '';
         print DESC "$loop\t$name\n";
     }
-    
+
     close DESC;
 }
 
@@ -530,7 +532,7 @@ sub write_desc_file {
 sub send_recording_email {
     my ( $loops, $file ) = @_;
 
-    my @to = get_recipients('email', @$loops);
+    my @to = get_recipients( 'email', @$loops );
 
     return send_email(
         \@to,
@@ -598,9 +600,9 @@ sub send_email {
 sub send_sms {
     my ( $loop, $type, $time ) = @_;
 
-    my $who  = $Cfg::LOOPS{$loop}->{name}  || $loop;
-    my $what = $ALARMTYPES{$type} || $type;
-    my @to = get_recipients('sms', $loop);
+    my $who  = $Cfg::LOOPS{$loop}->{name} || $loop;
+    my $what = $ALARMTYPES{$type}         || $type;
+    my @to = get_recipients( 'sms', $loop );
 
     if (@to) {
         $log->info(
@@ -619,7 +621,7 @@ sub send_sms {
 sub send_recording_sms {
     my ( $loops, $file ) = @_;
 
-    my @to = get_recipients('wappush', @$loops);
+    my @to = get_recipients( 'wappush', @$loops );
 
     # SMS::send( $Cfg::SMS_FROM, \@to, $who, $what );
     return SMS::send_wappush(
