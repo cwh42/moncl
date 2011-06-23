@@ -86,14 +86,17 @@ sub smskaufen {
   my $message = "$what $who";
   my $enc_message = encode( "iso-8859-1", $message );
   my %params = ( id => $Cfg::SMSKAUFEN_USER,
+                 #pw => $Cfg::SMSKAUFEN_PASS,
                  apikey => $Cfg::SMSKAUFEN_APIKEY,
                  type => 4,
-                 id_status => 1,
+                 #id_status => 1,
                  massen => 1,
-                 termin => '01.01.2000-00:00',
+                 termin => smstime(),
                  empfaenger => join(';',@$to),
                  absender => $from,
                  text => $enc_message );
+
+  delete @params{'massen', 'termin'} if scalar @$to == 1;
 
   my $uri = URI->new($url);
   $uri->query_form( %params );
@@ -147,7 +150,7 @@ sub send_wappush {
       my $uri = URI->new($url);
       $uri->query_form( %params );
 
-      print "$uri\n";
+      #print "$uri\n";
 
       my $result = get($uri);
       push @return, "($result) ".$returnvals{$result};
