@@ -29,7 +29,6 @@ use Exporter;
 use LWP::Simple;
 use Encode;
 use URI;
-use autouse 'Net::Clickatell';
 
 use vars qw(@ISA @EXPORT);
 
@@ -37,22 +36,24 @@ use vars qw(@ISA @EXPORT);
 @EXPORT = qw();
 
 sub send {
-  my ($from, $to, $who, $what) = @_;
+    my ($from, $to, $who, $what) = @_;
 
-  if ( $Cfg::SMS_PROVIDER eq 'Clickatell' ) {
-    my $clickatell = Net::Clickatell->new( API_ID => $Cfg::CATELL_API_ID,
-                                           USERNAME =>$Cfg::CATELL_USER,
-                                           PASSWORD =>$Cfg::CATELL_PASS );
+    if ( $Cfg::SMS_PROVIDER eq 'Clickatell' ) {
+        eval "use Net::Clickatell";
+        die $@ if $@;
+        my $clickatell = Net::Clickatell->new( API_ID => $Cfg::CATELL_API_ID,
+                                               USERNAME =>$Cfg::CATELL_USER,
+                                               PASSWORD =>$Cfg::CATELL_PASS );
 
-    return $clickatell->sendBasicSMSMessage($from,
-                                            join(',',@$to),
-                                            "$what $who");
-  } elsif ( $Cfg::SMS_PROVIDER eq 'SMSKaufen' ) {
-    return smskaufen($from, $to, $who, $what);
-  }
-  else {
-    return "Could not find SMS Provider $Cfg::SMS_PROVIDER.";
-  }
+        return $clickatell->sendBasicSMSMessage($from,
+                                                join(',',@$to),
+                                                "$what $who");
+    } elsif ( $Cfg::SMS_PROVIDER eq 'SMSKaufen' ) {
+        return smskaufen($from, $to, $who, $what);
+    }
+    else {
+        return "Could not find SMS Provider $Cfg::SMS_PROVIDER.";
+    }
 }
 
 sub smskaufen {
