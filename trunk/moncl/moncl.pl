@@ -564,7 +564,7 @@ sub send_email {
 
     my $mail = MIME::Lite->new(
         From         => $Cfg::MAIL_FROM,
-        To           => $to,
+        To           => join(', ', @$to),
         Subject      => $subject,
         'Message-ID' => msgid($Cfg::MAIL_FROM),
         Precedence   => 'bulk',
